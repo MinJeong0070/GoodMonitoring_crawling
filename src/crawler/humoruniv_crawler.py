@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime, timedelta
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title
+from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -258,3 +258,16 @@ def humoruniv_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+
+    result_dir = '../결과/웃긴대학'
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    all_data = pd.concat([
+        result_csv_data(search, platform='웃긴대학', subdir='11.웃긴대학')
+        for search in searchs
+    ])
+    print(all_data.count())
+
+    all_data.to_csv(f'{result_dir}/웃긴대학_raw data_{today}.csv', encoding='utf-8', index=False)
+

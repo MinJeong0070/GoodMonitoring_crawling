@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title
+from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -223,3 +223,15 @@ def arca_main_crw(searchs, start_date, end_date):
                 break
     wd.quit()
     wd_dp1.quit()
+
+    result_dir = '../결과/아카라이브'
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    all_data = pd.concat([
+        result_csv_data(search, platform='아카라이브', subdir='9.아카라이브')
+        for search in searchs
+    ])
+    print(all_data.count())
+
+    all_data.to_csv(f'{result_dir}/아카라이브_raw data_{today}.csv', encoding='utf-8', index=False)

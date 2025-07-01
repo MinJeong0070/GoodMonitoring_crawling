@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title
+from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -227,14 +227,15 @@ def clien_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
-
-    result_dir = '../결과/2.클리앙'
+    result_dir = '../결과/클리앙'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
-    # 모든 파일의 데이터를 읽어와 결합
-    all_data = pd.concat([result_csv_data(search) for search in searchs])
+    all_data = pd.concat([
+        result_csv_data(search, platform='클리앙', subdir='2.클리앙')
+        for search in searchs
+    ])
     print(all_data.count())
 
-    all_data.to_csv(f'../결과/1.뽐뿌/뽐뿌_raw data_{today}.csv', encoding='utf-8', index=False)
+    all_data.to_csv(f'{result_dir}/클리앙_raw data_{today}.csv', encoding='utf-8', index=False)
 

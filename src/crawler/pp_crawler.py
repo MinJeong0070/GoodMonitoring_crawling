@@ -24,7 +24,6 @@ logging.basicConfig(
 )
 
 
-
 # 한페이지 크롤링
 def pp_crw(wd, url, search):
     try:
@@ -223,14 +222,16 @@ def pp_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
-    result_dir = '../결과/1.뽐뿌'
+    result_dir = '../결과/뽐뿌'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
-    # 모든 파일의 데이터를 읽어와 결합
-    all_data = pd.concat([result_csv_data(search) for search in searchs])
+    all_data = pd.concat([
+        result_csv_data(search, platform='뽐뿌', subdir='1.뽐뿌')
+        for search in searchs
+    ])
     print(all_data.count())
 
-    all_data.to_csv(f'../결과/1.뽐뿌/뽐뿌_raw data_{today}.csv', encoding='utf-8', index=False)
+    all_data.to_csv(f'{result_dir}/뽐뿌_raw data_{today}.csv', encoding='utf-8', index=False)
 
 

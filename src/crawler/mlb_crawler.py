@@ -10,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title
+from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -166,15 +166,15 @@ def mlb_crw(wd, url, search):
     })
 
     # 데이터 저장
-    save_to_csv(main_temp, f'../csv/20.엠엘비파크/{today}/엠엘비파크_{search}.csv')
-    logging.info(f'저장완료 : csv/20.엠엘비파크/{today}/엠엘비파크_{search}.csv')
+    save_to_csv(main_temp, f'../csv/21.엠엘비파크/{today}/엠엘비파크_{search}.csv')
+    logging.info(f'저장완료 : csv/21.엠엘비파크/{today}/엠엘비파크_{search}.csv')
 
 
 
 
 def mlb_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/20.엠엘비파크/{today}'):
-        os.makedirs(f'../csv/20.엠엘비파크/{today}')
+    if not os.path.exists(f'../csv/21.엠엘비파크/{today}'):
+        os.makedirs(f'../csv/21.엠엘비파크/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -231,3 +231,15 @@ def mlb_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+
+    result_dir = '../결과/엠엘비파크'
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    all_data = pd.concat([
+        result_csv_data(search, platform='엠엘비파크', subdir='21.엠엘비파크')
+        for search in searchs
+    ])
+    print(all_data.count())
+
+    all_data.to_csv(f'{result_dir}/엠엘비파크_raw data_{today}.csv', encoding='utf-8', index=False)

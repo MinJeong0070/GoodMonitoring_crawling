@@ -33,8 +33,8 @@ pd_search = pd.read_excel("../(언진) 2025 매체사 검색어 목록.xlsx", sh
 searchs = pd_search['검색어명']
 
 # 기간 설정
-start_date = datetime.strptime('2025-5-1', '%Y-%m-%d').date()
-end_date = datetime.strptime('2025-5-1', '%Y-%m-%d').date()
+start_date = datetime.strptime('2025-7-1', '%Y-%m-%d').date()
+end_date = datetime.strptime('2025-7-1', '%Y-%m-%d').date()
 
 # 사이트별 함수 매핑
 crawlers = {
@@ -82,11 +82,10 @@ if __name__ == "__main__":
         # 전처리 및 저장 실행
         filtered = process_file(
             search_excel_path="../(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=f"결과/{x}_raw data_{today}.csv",  # 이 값은 내부적으로는 사용되지 않음
-            output_excel_path=f"결과/{x}_filtered_{today}.xlsx",
+            input_csv_template=f"../결과/{x}/{x}_raw data_{today}.csv",
+            output_excel_path=f"../결과/{x}/{x}_전처리_{today}.xlsx",
             target_year=end_date.year,
-            target_month = end_date.month,
-            site = x
+            target_month = end_date.month
         )
         print("[INFO] 전체 작업 완료.")
     else:

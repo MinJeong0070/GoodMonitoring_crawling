@@ -26,19 +26,21 @@ def setup_driver():
 
     return driver
 
-def result_csv_data(search):
 
+def result_csv_data(search, platform, subdir, base_path='../csv'):
 
-    file_path = f'../csv/1.뽐뿌/{today}/뽐뿌_{search}.csv'
-    # 파일 존재 여부 확인
+    file_path = os.path.join(base_path, subdir, today, f'{platform}_{search}.csv')
+
     if not os.path.isfile(file_path):
-        print(f"파일 '{file_path}'이 존재하지 않습니다. 스킵합니다.")
-        return
+        print(f"[스킵] 파일이 존재하지 않음: {file_path}")
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(file_path, encoding='utf-8')
+        return df
+    except Exception as e:
+        print(f"[오류] CSV 읽기 실패 ({file_path}): {e}")
+        return pd.DataFrame()
 
-    # CSV 파일 읽기
-    df_fm = pd.read_csv(file_path, encoding='utf-8')
-
-    return df_fm
 # csv 저장
 def save_to_csv(df, file_name):
     try:
