@@ -95,10 +95,10 @@ def dq_crw(wd, url, searchs):
                 writer = "익명"
         else:
             writer = "익명"
-        images = content_div.find_all('img')
-        videos = content_div.find_all('video')
-        youtube_iframes = [i for i in content_div.find_all('iframe') if 'youtube.com' in str(i.get('src'))]
-        has_media = 'O' if images or videos or youtube_iframes else ' '
+        # images = content_div.find_all('img')
+        # videos = content_div.find_all('video')
+        # youtube_iframes = [i for i in content_div.find_all('iframe') if 'youtube.com' in str(i.get('src'))]
+        # has_media = 'O' if images or videos or youtube_iframes else ' '
 
         now_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -114,7 +114,7 @@ def dq_crw(wd, url, searchs):
                     "게시물 등록일자": [date],
                     "계정명": [writer],
                     "수집시간": [now_time],
-                    "이미지 유무": [has_media]
+                    # "이미지 유무": [has_media]
                 })
                 save_to_csv(df, f'../csv/24.더쿠/{today}/더쿠_{search}.csv')
                 logging.info(f'csv/24.더쿠/{today}/인스티즈_{search}.csv')
@@ -136,7 +136,7 @@ def dq_main_crw(searchs, start_date, end_date, max_pages=1400):
     wd = setup_driver()
     wd_detail = setup_driver()
 
-    page_num = 523
+    page_num = 1
     visited_urls = set()
 
     while page_num <= max_pages:
@@ -215,10 +215,9 @@ def dq_main_crw(searchs, start_date, end_date, max_pages=1400):
         os.makedirs(result_dir)
 
     all_data = pd.concat([
-        result_csv_data(search, platform='더쿠', subdir='26.더쿠')
+        result_csv_data(search, platform='더쿠', subdir='24.더쿠')
         for search in searchs
     ])
-    print(all_data.count())
 
     all_data.to_csv(f'{result_dir}/더쿠_raw data_{today}.csv', encoding='utf-8', index=False)
 

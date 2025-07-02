@@ -2,7 +2,6 @@ import os
 import pandas as pd
 from datetime import datetime
 
-
 def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
     # 비신탁사 및 매체사 데이터 로드
     df_untrusted = pd.read_excel(untrusted_file)
@@ -17,25 +16,24 @@ def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
 
     # 필터링 함수 정의
     def should_remove(post_content):
-        post_content = str(post_content)  # 문자열 변환
+        post_content = str(post_content)
+        contains_untrusted_copyright = any(c in post_content for c in untrusted_copyrights)
+        contains_untrusted_domain = any(d in post_content for d in untrusted_domains)
+        contains_trusted_domain = any(t in post_content for t in trusted_domains)
 
-        # 비신탁사 저작권 문구나 도메인이 포함되어 있는지 확인
-        contains_untrusted_copyright = any(copyright in post_content for copyright in untrusted_copyrights)
-        contains_untrusted_domain = any(domain in post_content for domain in untrusted_domains)
-
-        # 매체사 도메인이 포함되어 있는지 확인
-        contains_trusted_domain = any(domain in post_content for domain in trusted_domains)
-
-        # 비신탁사 저작권 문구 또는 도메인이 포함되어 있으면서, 매체사 도메인이 없는 경우 삭제
         return (contains_untrusted_copyright or contains_untrusted_domain) and not contains_trusted_domain
 
-    # 삭제 대상과 유지 대상을 나누기
-    mask = all_data["게시물 내용"].apply(should_remove)
-    df_filtered = all_data[~mask]  # 유지할 데이터
-    df_removed = all_data[mask]  # 삭제할 데이터
+    # 결측값 방지
+    content_series = all_data["게시물 내용"].fillna("")
+    mask = content_series.apply(should_remove)
 
+    # 유지할 데이터
+    df_filtered = all_data[~mask]
 
-    return df_filtered, df_removed
+    if df_filtered.empty:
+        df_filtered = all_data.iloc[0:0]
+
+    return df_filtered
 
 
 def filter_empty_image_and_no_da(df_filtered):
@@ -77,7 +75,13 @@ def process_file(
 
 
     # 게시물 등록일자 전처리
-    df = pd.read_csv(input_csv_template)
+    try:
+        df = pd.read_csv(input_csv_template, encoding="utf-8")
+    except UnicodeDecodeError:
+        print("⚠️ UTF-8 디코딩 실패, cp949로 재시도합니다.")
+        df = pd.read_csv(input_csv_template, encoding="cp949")
+
+
     df['게시물 URL'] = df['게시물 URL'].apply(lambda x: x.split('&keyword=')[0])
     df['게시물 등록일자'] = pd.to_datetime(df['게시물 등록일자'], errors='coerce')
 
@@ -89,23 +93,19 @@ def process_file(
         (~df['게시물 제목'].fillna('').str.contains('신춘문예', case=False)) &
         (~df['계정명'].fillna('').str.contains('뽐뿌뉴스', case=False))
         ]
-
     # 등록일자 전처리
     df2 = df1 [
         (df1['게시물 등록일자'].dt.year == target_year) &
         (df1['게시물 등록일자'].dt.month == target_month)
     ]
-
     #URL 정리
     df3 = df2.drop_duplicates(subset=['게시물 URL'], keep='first')
-
     #비신탁사 전처리
-    df_filtered, df_removed_untrusted = filter_untrusted_posts(
+    df_filtered = filter_untrusted_posts(
         df3,
         untrusted_file="../비신탁사_저작권문구+도메인주소.xlsx",
         trusted_file="../(언진) 전처리용 도메인 주소.xlsx"
     )
-
     filtered_df = filter_empty_image_and_no_da(df_filtered)
 
     # 전처리 완료 파일을 Excel로 저장

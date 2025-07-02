@@ -94,40 +94,40 @@ def cook82_crw(wd, url, search):
 
         current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-        # 이미지/비디오/유튜브 유무 확인
-        try:
-            # 1. scrap_img로 표시된 background-image 확인
-            bg_images = content_div.find_all('span', class_='scrap_img')
-
-            # 2. 일반 이미지 (img 태그) 확인
-            images = content_div.find_all('img')
-
-            # 3. 비디오 확인 (video 태그)
-            videos = content_div.find_all('video')
-
-            # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
-            iframes = content_div.find_all('iframe')
-            youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
-
-            # 5. 하이퍼링크로 포함된 모든 URL
-            article_links = content_div.find_all('a', href=True)
-            link_urls = [
-                a['href'] for a in article_links if 'http' in a['href']
-            ]
-
-            # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
-            text_content = content_div.get_text()
-            text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
-
-            # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
-            if bg_images or images or videos or youtube_videos or link_urls or text_urls:
-                image_check_list.append('O')
-            else:
-                image_check_list.append(' ')
-                logging.info(f'이미지 없음: {url}')
-        except Exception as e:
-            logging.error(f"미디어 확인 오류: {e}")
-            image_check_list.append(' ')
+        # # 이미지/비디오/유튜브 유무 확인
+        # try:
+        #     # 1. scrap_img로 표시된 background-image 확인
+        #     bg_images = content_div.find_all('span', class_='scrap_img')
+        #
+        #     # 2. 일반 이미지 (img 태그) 확인
+        #     images = content_div.find_all('img')
+        #
+        #     # 3. 비디오 확인 (video 태그)
+        #     videos = content_div.find_all('video')
+        #
+        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
+        #     iframes = content_div.find_all('iframe')
+        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
+        #
+        #     # 5. 하이퍼링크로 포함된 모든 URL
+        #     article_links = content_div.find_all('a', href=True)
+        #     link_urls = [
+        #         a['href'] for a in article_links if 'http' in a['href']
+        #     ]
+        #
+        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
+        #     text_content = content_div.get_text()
+        #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
+        #
+        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
+        #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
+        #         image_check_list.append('O')
+        #     else:
+        #         image_check_list.append(' ')
+        #         logging.info(f'이미지 없음: {url}')
+        # except Exception as e:
+        #     logging.error(f"미디어 확인 오류: {e}")
+        #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
 
@@ -139,7 +139,7 @@ def cook82_crw(wd, url, search):
             "게시물 등록일자": date_list,
             "계정명": writer_list,
             "수집시간": current_date_list,
-            "이미지 유무": image_check_list
+            # "이미지 유무": image_check_list
         })
 
         # 데이터 저장
@@ -234,7 +234,6 @@ def cook82_main_crw(searchs, start_date, end_date):
         result_csv_data(search, platform='82쿡', subdir='12.82쿡')
         for search in searchs
     ])
-    print(all_data.count())
 
-    all_data.to_csv(f'{result_dir}/뽐뿌_raw data_{today}.csv', encoding='utf-8', index=False)
+    all_data.to_csv(f'{result_dir}/82쿡_raw data_{today}.csv', encoding='utf-8', index=False)
 

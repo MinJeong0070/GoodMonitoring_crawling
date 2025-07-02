@@ -130,7 +130,7 @@ def inven_main_crw(searchs, start_date, end_date):
                 noresult = soup_dp1.find('ul', class_='noresult')
 
                 if noresult:
-                    return  # 결과가 없으면 함수 종료
+                    break # 결과가 없으면 함수 종료
 
                 # 페이지 수 가져오기
                 page_tag = soup_dp1.find_all('a', class_="pg")

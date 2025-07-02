@@ -33,8 +33,8 @@ pd_search = pd.read_excel("../(언진) 2025 매체사 검색어 목록.xlsx", sh
 searchs = pd_search['검색어명']
 
 # 기간 설정
-start_date = datetime.strptime('2025-7-1', '%Y-%m-%d').date()
-end_date = datetime.strptime('2025-7-1', '%Y-%m-%d').date()
+start_date = datetime.strptime('2025-6-1', '%Y-%m-%d').date()
+end_date = datetime.strptime('2025-6-30', '%Y-%m-%d').date()
 
 # 사이트별 함수 매핑
 crawlers = {
@@ -72,9 +72,9 @@ if __name__ == "__main__":
 
     crw_func = crawlers.get(x)
     if crw_func:
-        print(f"[INFO] '{x}' 사이트 크롤링 시작...")
+        print(f"'{x}' 사이트 크롤링 시작...")
         crw_func(searchs, start_date, end_date)
-        print(f"[INFO] 크롤링 완료. 데이터 처리 시작...")
+        print(f"크롤링 완료. 데이터 처리 시작...")
 
         # 오늘 날짜로 파일명 처리
         today = datetime.now().strftime("%y%m%d")
@@ -87,6 +87,6 @@ if __name__ == "__main__":
             target_year=end_date.year,
             target_month = end_date.month
         )
-        print("[INFO] 전체 작업 완료.")
+        print("전체 작업 완료.")
     else:
         print("지원하지 않는 사이트입니다.")

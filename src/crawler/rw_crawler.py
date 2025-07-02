@@ -90,39 +90,39 @@ def rw_crw(wd, url, search):
         url_list.append(url)
         search_word_list.append(search)
 
-        # 이미지 유무 확인 (루리웹 구조 반영)
-        try:
-            content_div = soup.find('div', class_='view_content autolink')
-
-            # 1. 일반 이미지 (img 태그) 확인
-            images = content_div.find_all('img')
-
-            # 2. 비디오 확인 (video 태그)
-            videos = content_div.find_all('video')
-
-            # 3. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
-            iframes = content_div.find_all('iframe')
-            youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
-
-            # 4. 하이퍼링크로 포함된 모든 URL
-            article_links = content_div.find_all('a', href=True)
-            link_urls = [a['href'] for a in article_links if 'http' in a['href']]
-
-            # 5. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
-            text_content = content_div.get_text()
-            text_urls = re.findall(r'(https?://[^\s]+)', text_content)
-
-            # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
-            if images or videos or youtube_videos or link_urls or text_urls:
-                image_check_list.append('O')
-                logging.info(f"이미지 있음: {url}")
-            else:
-                image_check_list.append(' ')
-                logging.info(f"이미지 없음: {url}")
-
-        except Exception as e:
-            logging.error(f"미디어 확인 오류: {e}")
-            image_check_list.append(' ')
+        # # 이미지 유무 확인 (루리웹 구조 반영)
+        # try:
+        #     content_div = soup.find('div', class_='view_content autolink')
+        #
+        #     # 1. 일반 이미지 (img 태그) 확인
+        #     images = content_div.find_all('img')
+        #
+        #     # 2. 비디오 확인 (video 태그)
+        #     videos = content_div.find_all('video')
+        #
+        #     # 3. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
+        #     iframes = content_div.find_all('iframe')
+        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
+        #
+        #     # 4. 하이퍼링크로 포함된 모든 URL
+        #     article_links = content_div.find_all('a', href=True)
+        #     link_urls = [a['href'] for a in article_links if 'http' in a['href']]
+        #
+        #     # 5. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
+        #     text_content = content_div.get_text()
+        #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
+        #
+        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
+        #     if images or videos or youtube_videos or link_urls or text_urls:
+        #         image_check_list.append('O')
+        #         logging.info(f"이미지 있음: {url}")
+        #     else:
+        #         image_check_list.append(' ')
+        #         logging.info(f"이미지 없음: {url}")
+        #
+        # except Exception as e:
+        #     logging.error(f"미디어 확인 오류: {e}")
+        #     image_check_list.append(' ')
 
         # 날짜 출력
         rw_date_str = soup.find('span', class_='regdate').text.strip().split(' ')[0]
@@ -140,7 +140,7 @@ def rw_crw(wd, url, search):
             "게시물 내용": content_list,
             "게시물 등록일자": date_list,
             "계정명": writer_list,
-            "이미지 유무": image_check_list
+            # "이미지 유무": image_check_list
         })
 
         # 데이터 저장
@@ -222,7 +222,6 @@ def rw_main_crw(searchs, start_date, end_date):
         result_csv_data(search, platform='루리웹', subdir='4.루리웹')
         for search in searchs
     ])
-    print(all_data.count())
 
     all_data.to_csv(f'{result_dir}/루리웹_raw data_{today}.csv', encoding='utf-8', index=False)
 
