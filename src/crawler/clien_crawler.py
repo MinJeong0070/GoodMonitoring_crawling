@@ -107,23 +107,23 @@ def clien_crw(wd, url, search):
         #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
         #
-        # # # 날짜 출력 (수정일 제외)
-        # # clien_date_str = soup.find('div', class_='post_author').find('span').text.strip()
-        #
-        # # if soup.find('span', class_='lastdate'):
-        # # "수정일" 이후의 텍스트 제거
-        # date_str = soup.find(class_="view_count date").text.strip()
-        # date_match = re.search(r'\d{4}-\d{2}-\d{2}', date_str)
-        # date = date_match.group()
-        #
-        # # date = datetime.strptime(clien_date_str, '%Y-%m-%d %H:%M:%S')
-        # date_list.append(date)
-        #
-        # # 채널명
-        # writer_tag = soup.find('span', class_='nickname')
-        #
-        # writer_strip = ' '.join(writer_tag.text.split())
-        # writer_list.append(writer_strip)
+        # # 날짜 출력 (수정일 제외)
+        # clien_date_str = soup.find('div', class_='post_author').find('span').text.strip()
+
+        # if soup.find('span', class_='lastdate'):
+        # "수정일" 이후의 텍스트 제거
+        date_str = soup.find(class_="view_count date").text.strip()
+        date_match = re.search(r'\d{4}-\d{2}-\d{2}', date_str)
+        date = date_match.group()
+
+        # date = datetime.strptime(clien_date_str, '%Y-%m-%d %H:%M:%S')
+        date_list.append(date)
+
+        # 채널명
+        writer_tag = soup.find('span', class_='nickname')
+
+        writer_strip = ' '.join(writer_tag.text.split())
+        writer_list.append(writer_strip)
 
         # 추출시간
         now_date.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
