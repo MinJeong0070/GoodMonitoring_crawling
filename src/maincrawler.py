@@ -83,7 +83,7 @@ if __name__ == "__main__":
         filtered = process_file(
             search_excel_path="../(언진) 2025 매체사 검색어 목록.xlsx",
             input_csv_template=f"../결과/{x}/{x}_raw data_{today}.csv",
-            output_excel_path=f"../결과/전처리/{x}_전처리_{today}.xlsx",
+            output_excel_path=f"../결과/1.전처리/{x}_전처리_{today}.xlsx",
             target_year=end_date.year,
             target_month = end_date.month
         )
