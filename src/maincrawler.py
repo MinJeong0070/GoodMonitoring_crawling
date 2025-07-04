@@ -94,14 +94,14 @@ def run_crawler():
         status_label.config(text=f"[{site}] 크롤링 중...")
         root.update_idletasks()
 
-        # crw_func(searchs, start_date, end_date)
+        crw_func(searchs, start_date, end_date)
 
         status_label.config(text="전처리 중...")
         root.update_idletasks()
 
         filtered = process_file(
             search_excel_path="../(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=f"../결과/{site}/{site}_raw data_250630.csv",
+            input_csv_template=f"../결과/{site}/{site}_raw data_{today}.csv",
             output_excel_path=f"../결과/1.전처리/{site}_전처리_{today}.xlsx",
             target_year=end_date.year,
             target_month=end_date.month

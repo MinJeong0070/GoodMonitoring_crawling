@@ -86,7 +86,7 @@ def arca_crw(wd, url, search):
         search_word_list.append(search)
 
         date_str = soup.find('div', class_='info-row').find('time').get_text()
-        date = datetime.strptime(date_str, '%Y-%m-%d')
+        date = datetime.strptime(date_str.split()[0], '%Y-%m-%d')
         date_list.append(date)
         logging.info(f"날짜 추출 성공: {date_str}")
 
@@ -178,7 +178,7 @@ def arca_main_crw(searchs, start_date, end_date):
                 wd_dp1.get(url)
                 WebDriverWait(wd_dp1, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'article-list')))
 
-                time.sleep(1)
+                time.sleep(10)
 
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 

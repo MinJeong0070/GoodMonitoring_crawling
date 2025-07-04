@@ -102,7 +102,7 @@ def dq_crw(wd, url, searchs):
 
         now_time = datetime.now().strftime('%Y-%m-%d ')
 
-        # ✅ 매칭되는 검색어가 있을 때마다 저장
+        #  매칭되는 검색어가 있을 때마다 저장
         for search in searchs:
             if search.lower() in cleaned_title.lower() or search.lower() in post_content.lower():
                 df = pd.DataFrame({
@@ -136,7 +136,7 @@ def dq_main_crw(searchs, start_date, end_date, max_pages=1400):
     wd = setup_driver()
     wd_detail = setup_driver()
 
-    page_num = 1
+    page_num = 100
     visited_urls = set()
 
     while page_num <= max_pages:

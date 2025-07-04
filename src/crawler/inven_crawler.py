@@ -70,13 +70,13 @@ def inven_crw(wd, url, search):
 
         # 날짜 출력
         date_str = soup.find('div', class_='articleDate').get_text()
-        date = datetime.strptime(date_str, '%Y-%m-%d ')
+        date = datetime.strptime(date_str, '%Y-%m-%d %H:%M')
         date_list.append(date)
         # 채널명
         writer_list.append(soup.find('div', class_="articleWriter").get_text().strip())
 
         # 추출시간
-        now_date.append(datetime.now().strftime('%Y-%m-%d '))
+        now_date.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
         # 임시 데이터프레임 생성
         main_temp = pd.DataFrame({
@@ -130,7 +130,7 @@ def inven_main_crw(searchs, start_date, end_date):
                 noresult = soup_dp1.find('ul', class_='noresult')
 
                 if noresult:
-                    break # 결과가 없으면 함수 종료
+                    break  # 결과가 없으면 함수 종료
 
                 # 페이지 수 가져오기
                 page_tag = soup_dp1.find_all('a', class_="pg")
@@ -156,6 +156,7 @@ def inven_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
+
     result_dir = '../결과/인벤'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
@@ -164,7 +165,5 @@ def inven_main_crw(searchs, start_date, end_date):
         result_csv_data(search, platform='인벤', subdir='3.인벤')
         for search in searchs
     ])
-    print(all_data.count())
 
     all_data.to_csv(f'{result_dir}/인벤_raw data_{today}.csv', encoding='utf-8', index=False)
-

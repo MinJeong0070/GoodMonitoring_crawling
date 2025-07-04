@@ -71,7 +71,7 @@ def scline_crw(wd, url, search):
 
         if date_match:
             date_str = date_match.group(0)
-            date = datetime.strptime(date_str, '%Y-%m-%d')
+            date = datetime.strptime(date_str.split()[0], '%Y-%m-%d')
             date_list.append(date)
             logging.info(f"날짜 추출 성공: {date_str}")
         else:

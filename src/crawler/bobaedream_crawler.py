@@ -78,7 +78,6 @@ def bobaedream_crw(wd, url, search):
         # 채널명
         writer_list.append(
             soup.find('dd', class_='proflieInfo').find_all('li')[0].find('span', class_='proCont').get_text().lstrip())
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d'))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:
@@ -123,8 +122,7 @@ def bobaedream_crw(wd, url, search):
             "게시물 제목": title_list,
             "게시물 내용": content_list,
             "게시물 등록일자": date_list,
-            "계정명": writer_list,
-            "수집시간": current_date_list
+            "계정명": writer_list
         })
 
         # 데이터 저장

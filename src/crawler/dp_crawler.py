@@ -87,7 +87,7 @@ def dp_crw(wd, url, search):
 
         search_word_list.append(search)
 
-        date_str = soup.find('div', id='view_datetime').get_text(strip=True).split(' ')[2]
+        date_str = soup.find('div', id='view_datetime').get_text(strip=True).split(' ')[0]
         date = datetime.strptime(date_str, '%Y-%m-%d')
         date_list.append(date)
         logging.info(f"날짜 추출 성공: {date_str}")
@@ -95,8 +95,7 @@ def dp_crw(wd, url, search):
         # 채널명
         writer_list.append(soup.find('span', class_='member').get_text(strip=True))
 
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
-        #
+
         # # 이미지/비디오/유튜브 유무 확인
         # try:
         #     # 1. scrap_img로 표시된 background-image 확인
@@ -141,8 +140,6 @@ def dp_crw(wd, url, search):
             "게시물 내용": content_list,
             "게시물 등록일자": date_list,
             "계정명": writer_list,
-            "수집시간": current_date_list,
-            # "이미지 유무": image_check_list
         })
 
         # 데이터 저장

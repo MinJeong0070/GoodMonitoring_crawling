@@ -80,7 +80,7 @@ def humoruniv_crw(wd, url, search):
 
         search_word_list.append(search)
 
-        date_str = tb.find('div', id='content_info').find_all('span')[5].get_text().strip().split(' ')[0]
+        date_str = tb.find('div', id='content_info').find_all('span')[4 ].get_text().strip().split(' ')[0]
         logging.info(f"날짜 추출: {date_str}")
         date = datetime.strptime(date_str, '%Y-%m-%d')
         date_list.append(date)
@@ -89,7 +89,7 @@ def humoruniv_crw(wd, url, search):
         # 채널명
         writer_list.append(tb.find('span', class_='hu_nick_txt').get_text())
 
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:
@@ -269,4 +269,3 @@ def humoruniv_main_crw(searchs, start_date, end_date):
     ])
 
     all_data.to_csv(f'{result_dir}/웃긴대학_raw data_{today}.csv', encoding='utf-8', index=False)
-

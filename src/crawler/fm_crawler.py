@@ -162,7 +162,7 @@ def fm_main_crw(searchs, start_date, end_date):
 
                     try:
                         date_str = li.find('span', class_='time').text
-                        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                        date = datetime.strptime(date_str, '%Y-%m-%d %H:%M').date()
                     except Exception as e:
                         logging.error("날짜 오류 발생: {e}")
                         continue
