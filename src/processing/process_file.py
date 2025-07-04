@@ -1,4 +1,5 @@
 import os
+import re
 import pandas as pd
 from datetime import datetime
 
@@ -35,26 +36,30 @@ def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
 
     return df_filtered
 
-
 def filter_empty_image_and_no_da(df_filtered):
-    # 필터링 조건 정의
-    mask = (
-        # (df_filtered["이미지 유무"].str.strip() == "") & # 이미지가 없는 경우
-            (
-                    (~df_filtered["게시물 제목"].str.contains("다.", regex=False, na=False)) |  # 제목에 "다."가 없는 경우
-                    (df_filtered["게시물 제목"].str.contains("니다.", regex=False, na=False))  # 제목에 "니다."가 있는경우
-            ) &
-            (
-                    (~df_filtered["게시물 내용"].str.contains("다.", regex=False, na=False)) |  # 내용에 "다."가 없는 경우
-                    (df_filtered["게시물 내용"].str.contains("니다.", regex=False, na=False))  # 내용에 "니다."가 있는경우
-            ) &
-            (~df_filtered["게시물 제목"].str.contains("만평", regex=False, na=False)) &  # 제목에 "만평"이 없는 경우
-            (~df_filtered["게시물 내용"].str.contains("만평", regex=False, na=False))  # 내용에 "만평"이 없는 경우
-    )
+    def has_valid_da(text):
+        text = str(text)
+        matches = list(re.finditer(r"다\.", text))
 
-    df_final = df_filtered[~mask]  # 유지할 데이터
+        for match in matches:
+            start = match.start()
+            if start >= 1 and text[start - 1] == "니":
+                continue  # '니다.'이면 무시
+            return True  # 유효한 '다.' 발견
 
+        return False
+
+    def should_remove(title, content):
+        has_valid = has_valid_da(title) or has_valid_da(content)
+        has_cartoon = "만평" in title or "만평" in content
+        return not has_valid or has_cartoon
+
+    mask = df_filtered.apply(lambda row: should_remove(row["게시물 제목"], row["게시물 내용"]), axis=1)
+
+    df_final = df_filtered[~mask]
     return df_final
+
+
 
 
 def process_file(
@@ -84,6 +89,8 @@ def process_file(
 
     df['게시물 URL'] = df['게시물 URL'].apply(lambda x: x.split('&keyword=')[0])
     df['게시물 등록일자'] = pd.to_datetime(df['게시물 등록일자'], errors='coerce')
+    df["게시물 제목"] = df["게시물 제목"].fillna("").astype(str)
+    df["게시물 내용"] = df["게시물 내용"].fillna("").astype(str)
 
     df1 = df[
         (df.apply(
