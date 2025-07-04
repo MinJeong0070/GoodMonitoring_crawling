@@ -110,13 +110,13 @@ def todayhumor_crw(wd, url, search):
 
         divs = soup.find('div', class_='writerInfoContents').find_all('div')
         date_str = divs[6].text.strip().replace('등록시간 : ', '')
-        date = datetime.strptime(date_str, '%Y/%m/%d %H:%M:%S')
+        date = datetime.strptime(date_str, '%Y/%m/%d')
         date_list.append(date)
         logging.info(f"날짜 추출 성공: {date}")
 
         # 채널명
         writer_list.append(soup.find('span', id='viewPageWriterNameSpan').find('b').text)
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
 
         main_temp = pd.DataFrame({
 
@@ -179,12 +179,12 @@ def todayhumor_main_crw(searchs, start_date, end_date):
                 tr_tags = soup_dp1.find('table', class_='table_list').find_all('tr', class_='view list_tr_sisa')
                 logging.info(f"검색목록 찾음.")
 
+                after_start_date = False
                 for tr in tr_tags:
-                    after_start_date = False
 
                     date_str = tr.find('td', class_='date').text
                     date_str = '20' + date_str
-                    date = datetime.strptime(date_str, '%Y/%m/%d %H:%M').date()
+                    date = datetime.strptime(date_str, '%Y/%m/%d').date()
                     logging.info(f"날짜 찾음")
 
                     if date > end_date:

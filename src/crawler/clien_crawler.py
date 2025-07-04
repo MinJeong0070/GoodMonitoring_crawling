@@ -126,7 +126,7 @@ def clien_crw(wd, url, search):
         writer_list.append(writer_strip)
 
         # 추출시간
-        now_date.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        now_date.append(datetime.now().strftime('%Y-%m-%d'))
         # 임시 데이터프레임 생성
         main_temp = pd.DataFrame({
 

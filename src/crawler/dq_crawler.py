@@ -100,7 +100,7 @@ def dq_crw(wd, url, searchs):
         # youtube_iframes = [i for i in content_div.find_all('iframe') if 'youtube.com' in str(i.get('src'))]
         # has_media = 'O' if images or videos or youtube_iframes else ' '
 
-        now_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now_time = datetime.now().strftime('%Y-%m-%d ')
 
         # ✅ 매칭되는 검색어가 있을 때마다 저장
         for search in searchs:

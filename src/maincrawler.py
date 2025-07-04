@@ -1,3 +1,5 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
 import pandas as pd
 from datetime import datetime
 from crawler.pp_crawler import pp_main_crw
@@ -34,7 +36,7 @@ searchs = pd_search['검색어명']
 
 # 기간 설정
 start_date = datetime.strptime('2025-6-1', '%Y-%m-%d').date()
-end_date = datetime.strptime('2025-6-31', '%Y-%m-%d').date()
+end_date = datetime.strptime('2025-6-30', '%Y-%m-%d').date()
 
 # 사이트별 함수 매핑
 crawlers = {
@@ -67,26 +69,78 @@ crawlers = {
 
 }
 
-if __name__ == "__main__":
-    x = input("원하는 사이트 : ").strip()
+# 크롤러 실행 함수
+def run_crawler():
+    site = site_combo.get()
+    start_str = start_entry.get()
+    end_str = end_entry.get()
 
-    crw_func = crawlers.get(x)
-    if crw_func:
-        print(f"'{x}' 사이트 크롤링 시작...")
-        crw_func(searchs, start_date, end_date)
-        print(f"크롤링 완료. 데이터 처리 시작...")
+    # 유효성 검사
+    if site not in crawlers:
+        messagebox.showerror("오류", "사이트를 선택해주세요.")
+        return
 
-        # 오늘 날짜로 파일명 처리
-        today = datetime.now().strftime("%y%m%d")
+    try:
+        start_date = datetime.strptime(start_str, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
+    except ValueError:
+        messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. 예: 2025-06-01")
+        return
 
-        # 전처리 및 저장 실행
+    today = datetime.now().strftime("%y%m%d")
+    crw_func = crawlers[site]
+
+    try:
+        status_label.config(text=f"[{site}] 크롤링 중...")
+        root.update_idletasks()
+
+        # crw_func(searchs, start_date, end_date)
+
+        status_label.config(text="전처리 중...")
+        root.update_idletasks()
+
         filtered = process_file(
             search_excel_path="../(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=f"../결과/{x}/{x}_raw data_{today}.csv",
-            output_excel_path=f"../결과/1.전처리/{x}_전처리_{today}.xlsx",
+            input_csv_template=f"../결과/{site}/{site}_raw data_250630.csv",
+            output_excel_path=f"../결과/1.전처리/{site}_전처리_{today}.xlsx",
             target_year=end_date.year,
-            target_month = end_date.month
+            target_month=end_date.month
         )
-        print("전체 작업 완료.")
-    else:
-        print("지원하지 않는 사이트입니다.")
+
+        messagebox.showinfo("완료", f"[{site}] 전체 완료!")
+        status_label.config(text="전체 완료")
+    except Exception as e:
+        messagebox.showerror("에러 발생", str(e))
+        status_label.config(text="에러 발생")
+
+# 🖼 GUI 구성
+root = tk.Tk()
+root.title("웹 크롤러 GUI")
+root.geometry("400x300")
+
+# 사이트 선택
+tk.Label(root, text="사이트 선택:").pack(pady=5)
+site_combo = ttk.Combobox(root, values=list(crawlers.keys()), state="readonly", width=35)
+site_combo.set("사이트를 선택하세요")
+site_combo.pack()
+
+# 시작일
+tk.Label(root, text="시작일 (YYYY-MM-DD):").pack(pady=5)
+start_entry = tk.Entry(root)
+start_entry.insert(0, "2025-06-01")
+start_entry.pack()
+
+# 종료일
+tk.Label(root, text="종료일 (YYYY-MM-DD):").pack(pady=5)
+end_entry = tk.Entry(root)
+end_entry.insert(0, "2025-06-30")
+end_entry.pack()
+
+# 실행 버튼
+tk.Button(root, text="크롤링 시작", command=run_crawler).pack(pady=20)
+
+# 상태 표시
+status_label = tk.Label(root, text="")
+status_label.pack()
+
+root.mainloop()

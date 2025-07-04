@@ -86,13 +86,13 @@ def arca_crw(wd, url, search):
         search_word_list.append(search)
 
         date_str = soup.find('div', class_='info-row').find('time').get_text()
-        date = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        date = datetime.strptime(date_str, '%Y-%m-%d')
         date_list.append(date)
         logging.info(f"날짜 추출 성공: {date_str}")
 
         # 채널명
         writer_list.append(soup.find('div', class_='info-row').find('span', class_='user-info').find('a').get_text())
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d'))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:

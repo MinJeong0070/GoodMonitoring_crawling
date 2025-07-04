@@ -82,8 +82,8 @@ def pann_crw(wd, url, search):
         # 게시물 등록일자
         try:
             date_str = soup.find('div', class_='post-tit-info').find('span', class_='date').get_text()
-            date = datetime.strptime(date_str, '%Y.%m.%d %H:%M')
-            date_list.append(date.strftime('%Y-%m-%d %H:%M:%S'))
+            date = datetime.strptime(date_str, '%Y.%m.%d ')
+            date_list.append(date.strftime('%Y-%m-%d '))
             logging.info(f"날짜 추출 성공: {date_str}")
         except Exception as e:
             date_list.append('')
@@ -99,7 +99,7 @@ def pann_crw(wd, url, search):
             logging.error(f"작성자 추출 실패: {e}")
 
         # 수집 시간
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
 
         # # 이미지 유무 체크
         # try:

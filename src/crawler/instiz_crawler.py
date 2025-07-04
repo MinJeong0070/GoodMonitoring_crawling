@@ -170,7 +170,7 @@ def instiz_crw(wd, url, search, date):
         date_list.append(date)
         logging.info(f"날짜 추출 성공: {date}")
 
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:

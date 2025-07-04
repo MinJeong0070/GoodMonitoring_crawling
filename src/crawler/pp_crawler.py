@@ -98,7 +98,7 @@ def pp_crw(wd, url, search):
         writer_list.append(name)
 
         # 추출시간
-        now_date.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        now_date.append(datetime.now().strftime('%Y-%m-%d'))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:

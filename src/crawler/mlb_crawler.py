@@ -111,7 +111,7 @@ def mlb_crw(wd, url, search):
     search_word_list.append(search)
 
     date_str = soup.find('div', class_='text3').find('span', class_='val').get_text()
-    date = datetime.strptime(date_str, '%Y-%m-%d %H:%M')
+    date = datetime.strptime(date_str, '%Y-%m-')
     date_list.append(date.strftime('%Y-%m-%d'))
     logging.info(f"날짜 추출 성공: {date.strftime('%Y-%m-%d')}")
 

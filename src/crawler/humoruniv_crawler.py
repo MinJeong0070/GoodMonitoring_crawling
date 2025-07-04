@@ -89,7 +89,7 @@ def humoruniv_crw(wd, url, search):
         # 채널명
         writer_list.append(tb.find('span', class_='hu_nick_txt').get_text())
 
-        current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
 
         # # 이미지/비디오/유튜브 유무 확인
         # try:
