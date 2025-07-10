@@ -86,7 +86,7 @@ def dc_crw(wd, url, search):
 
         # 게시물 날짜
         date_str = soup.find('span', class_='gall_date').text
-        date = datetime.strptime(date_str, '%Y.%m.%d')
+        date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
         date_list.append(date)
 
         # 채널명
@@ -188,7 +188,7 @@ def dc_main_crw(searchs, start_date, end_date):
 
                     try:
                         date_str = li.find('span', class_='date_time').text
-                        date = datetime.strptime(date_str, '%Y.%m.%d').date()
+                        date = datetime.strptime(date_str, '%Y.%m.%d %H:%M').date()
                     except Exception as e:
                         logging.error("날짜 오류 발생: {e}")
                         continue

@@ -136,7 +136,7 @@ def dq_main_crw(searchs, start_date, end_date, max_pages=1400):
     wd = setup_driver()
     wd_detail = setup_driver()
 
-    page_num = 100
+    page_num = 50
     visited_urls = set()
 
     while page_num <= max_pages:
@@ -182,7 +182,7 @@ def dq_main_crw(searchs, start_date, end_date, max_pages=1400):
                         continue
                     visited_urls.add(post_url)
 
-                    # ✅ 검색어 리스트 통째로 전달
+                    #  검색어 리스트 통째로 전달
                     dq_crw(wd_detail, post_url, searchs)
 
                 except Exception as e:

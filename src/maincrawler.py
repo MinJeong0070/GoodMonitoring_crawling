@@ -113,7 +113,7 @@ def run_crawler():
         messagebox.showerror("에러 발생", str(e))
         status_label.config(text="에러 발생")
 
-# 🖼 GUI 구성
+# GUI 구성
 root = tk.Tk()
 root.title("웹 크롤러 GUI")
 root.geometry("400x300")
