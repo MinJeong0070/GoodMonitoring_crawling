@@ -143,4 +143,16 @@ tk.Button(root, text="크롤링 시작", command=run_crawler).pack(pady=20)
 status_label = tk.Label(root, text="")
 status_label.pack()
 
+# 로그 텍스트 박스
+log_frame = tk.Frame(root)
+log_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=5)
+
+log_text = tk.Text(log_frame, height=8, wrap=tk.WORD, state='disabled')
+log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+scrollbar = tk.Scrollbar(log_frame, command=log_text.yview)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+log_text.config(yscrollcommand=scrollbar.set)
+
 root.mainloop()

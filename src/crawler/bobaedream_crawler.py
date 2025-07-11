@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -62,7 +62,6 @@ def bobaedream_crw(wd, url, search):
         content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
 
         content_list.append(content_cleaned)
-        logging.info("내용 추출 성공")
 
         search_plt_list.append('웹페이지(보배드림)')
         url_list.append(url)

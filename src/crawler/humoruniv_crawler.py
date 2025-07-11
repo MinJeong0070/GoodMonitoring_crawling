@@ -1,18 +1,15 @@
 import os
 import re
-import random
 import time
 import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
-from dateutil.relativedelta import relativedelta
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")

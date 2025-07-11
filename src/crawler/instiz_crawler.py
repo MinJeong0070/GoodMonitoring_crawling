@@ -13,7 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime, timedelta
 
-from src.crawler.setup import setup_driver, save_to_csv, clean_title,result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, result_csv_data
 
 
 def parse_date(date_str):

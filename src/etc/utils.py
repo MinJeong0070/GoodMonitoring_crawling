@@ -65,3 +65,4 @@ def clean_title(title):
     # 따옴표 제거
     title = title.replace('"', '').strip()
     return title
+
