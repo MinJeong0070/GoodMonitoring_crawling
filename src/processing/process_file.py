@@ -36,7 +36,7 @@ def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
 
     return df_filtered
 
-def filter_empty_image_and_no_da(df_filtered):
+def filter_da(df_filtered):
     def has_valid_da(text):
         text = str(text)
         matches = list(re.finditer(r"다\.", text))
@@ -113,7 +113,7 @@ def process_file(
         untrusted_file="../비신탁사_저작권문구+도메인주소.xlsx",
         trusted_file="../(언진) 전처리용 도메인 주소.xlsx"
     )
-    filtered_df = filter_empty_image_and_no_da(df_filtered)
+    filtered_df = filter_da(df_filtered)
 
     # 전처리 완료 파일을 Excel로 저장
     filtered_df.to_excel(output_excel_path, index=False)
