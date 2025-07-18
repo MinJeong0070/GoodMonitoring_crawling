@@ -13,8 +13,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title, result_csv_dat
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 # 로그 설정
 logging.basicConfig(
@@ -179,7 +179,7 @@ def blind_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/20.블라인드/{today}/블라인드_{search}.csv')
+        save_to_csv(main_temp, f'csv/20.블라인드/{today}/블라인드_{search}.csv')
         logging.info(f"저장완료: csv/20.블라인드/{today}/블라인드_{search}.csv")
 
     except Exception as e:
@@ -187,9 +187,9 @@ def blind_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def blind_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/20.블라인드/{today}'):
-        os.makedirs(f'../csv/20.블라인드/{today}')
+def blind_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/20.블라인드/{today}'):
+        os.makedirs(f'csv/20.블라인드/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -206,6 +206,9 @@ def blind_main_crw(searchs, start_date, end_date):
     MAX_SCROLL_COUNT = 50
 
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         collected_urls = set()
         logging.info(f"[{search}] 크롤링 시작")
 
@@ -235,6 +238,8 @@ def blind_main_crw(searchs, start_date, end_date):
         after_start_date = False
 
         while scroll_count < MAX_SCROLL_COUNT and not after_start_date:
+            if stop_event.is_set():
+                break
             prev_height = wd_dp1.execute_script("return document.body.scrollHeight")
             time.sleep(2)
 
@@ -250,6 +255,8 @@ def blind_main_crw(searchs, start_date, end_date):
                 break
 
             for div in div_tags:
+                if stop_event.is_set():
+                    break
                 info_div = div.find('div', class_='info_fnc')
                 if not info_div:
                     logging.warning(f"[{search}] info_fnc 없음. 건너뜀.\n{div.prettify()}")
@@ -302,16 +309,16 @@ def blind_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/블라인드'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/블라인드'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='블라인드', subdir='20.블라인드')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='블라인드', subdir='20.블라인드')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/블라인드_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/블라인드_raw data_{today}.csv', encoding='utf-8', index=False)
 
 

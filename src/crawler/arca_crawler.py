@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'아카라이브_log_{today}.txt',
@@ -142,7 +142,7 @@ def arca_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/9.아카라이브/{today}/아카라이브_{search}.csv')
+        save_to_csv(main_temp, f'csv/9.아카라이브/{today}/아카라이브_{search}.csv')
         logging.info(f'csv/{today}/9.아카라이브_{search}.csv')
 
     except TimeoutException as e:
@@ -158,9 +158,9 @@ def arca_crw(wd, url, search):
         return None
 
 
-def arca_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/9.아카라이브/{today}'):
-        os.makedirs(f'../csv/9.아카라이브/{today}')
+def arca_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/9.아카라이브/{today}'):
+        os.makedirs(f'csv/9.아카라이브/{today}')
         print(f"폴더 생성 완료: {today}")
 
     logging.info(f"========================================================")
@@ -169,9 +169,14 @@ def arca_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
         time.sleep(10)
         while True:
+            if stop_event.is_set():
+                break
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
                 url = f'https://arca.live/b/breaking?keyword={search}&p={page_num}'
@@ -190,7 +195,8 @@ def arca_main_crw(searchs, start_date, end_date):
                     break
 
                 for tr in tr_tags:
-
+                    if stop_event.is_set():
+                        break
                     after_start_date = False  # 날짜가 시작 날짜 이후인 경우
                     try:
                         date_str = tr.find('span', class_='vcol col-time').find('time').text
@@ -223,14 +229,14 @@ def arca_main_crw(searchs, start_date, end_date):
                 break
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/아카라이브'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/아카라이브'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='아카라이브', subdir='9.아카라이브')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='아카라이브', subdir='9.아카라이브')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/아카라이브_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/아카라이브_raw data_{today}.csv', encoding='utf-8', index=False)

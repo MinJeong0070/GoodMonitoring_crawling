@@ -14,11 +14,11 @@ from src.etc.csv_to_excel import csv_to_excel
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
-    filename=f'../log/KBDIOM_log_{today}.txt',  # 로그 파일 이름
+    filename=f'log/KBDIOM_log_{today}.txt',  # 로그 파일 이름
     level=logging.INFO,  # 로그 레벨
     format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
     encoding='utf-8'  # 인코딩 설정
@@ -38,7 +38,7 @@ def normalize_date_string(raw_date):
         return None
 
 def result_csv_data(search):
-    file_path = f'../csv/26.KBDIOM/{today}/KBDIOM_{search}.csv'
+    file_path = f'csv/26.KBDIOM/{today}/KBDIOM_{search}.csv'
 
     # 파일 존재 여부 확인
     if not os.path.isfile(file_path):
@@ -128,13 +128,13 @@ def tistory_crw(wd, url, valid_domains, final_file):
 
 from urllib.parse import urljoin
 
-def kbdiom_main_crw(search, start_date, end_date):
+def kbdiom_main_crw(search, start_date, end_date,stop_event):
     today = datetime.now().strftime("%y%m%d")
-    final_file = f'../csv/26.KBDIOM/{today}/KBDIOM.csv'
+    final_file = f'csv/26.KBDIOM/{today}/KBDIOM.csv'
 
     # 📁 결과 저장 폴더 생성
-    if not os.path.exists(f'../csv/26.KBDIOM/{today}'):
-        os.makedirs(f'../csv/26.KBDIOM/{today}')
+    if not os.path.exists(f'csv/26.KBDIOM/{today}'):
+        os.makedirs(f'csv/26.KBDIOM/{today}')
         print(f"[폴더 생성 완료] {today}")
     else:
         print(f"[폴더 존재] {today}")
@@ -144,7 +144,7 @@ def kbdiom_main_crw(search, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
 
-    domain_df = pd.read_excel('../(언진) 전처리용 도메인 주소.xlsx')
+    domain_df = pd.read_excel('(언진) 전처리용 도메인 주소.xlsx')
     valid_domains = domain_df['도메인'].dropna().unique().tolist()
 
     stop_flag = False
@@ -153,6 +153,9 @@ def kbdiom_main_crw(search, start_date, end_date):
     time.sleep(2)
 
     for _ in range(100):
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         soup = BeautifulSoup(wd.page_source, 'html.parser')
         article_blocks = soup.select('div.cont_item')
 
@@ -190,6 +193,8 @@ def kbdiom_main_crw(search, start_date, end_date):
     article_blocks = soup.select('div.cont_item')
 
     for block in article_blocks:
+        if stop_event.is_set():
+            break
         if stop_flag:
             break
 
@@ -235,7 +240,7 @@ def kbdiom_main_crw(search, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
-
-    csv_to_excel(final_file)
+    if not stop_event.is_set():
+      csv_to_excel(final_file)
 
 

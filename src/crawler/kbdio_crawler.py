@@ -13,11 +13,11 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title
 from src.etc.csv_to_excel import csv_to_excel
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
-    filename=f'../log/KBDIO_log_{today}.txt',  # 로그 파일 이름
+    filename=f'log/KBDIO_log_{today}.txt',  # 로그 파일 이름
     level=logging.INFO,  # 로그 레벨
     format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
     encoding='utf-8'  # 인코딩 설정
@@ -25,7 +25,7 @@ logging.basicConfig(
 
 
 def result_csv_data(search):
-    file_path = f'../csv/25.KBDIO/{today}/KBDIO_{search}.csv'
+    file_path = f'csv/25.KBDIO/{today}/KBDIO_{search}.csv'
 
     # 파일 존재 여부 확인
     if not os.path.isfile(file_path):
@@ -101,10 +101,10 @@ def kbdio_crw(wd, url,valid_domains,final_file):
 
 
 
-def kbdio_main_crw(search,start_date, end_date):
-    final_file = f'../csv/25.KBDIO/{today}/KBDIO.csv'
-    if not os.path.exists(f'../csv/25.KBDIO/{today}'):
-        os.makedirs(f'../csv/25.KBDIO/{today}')
+def kbdio_main_crw(search,start_date, end_date,stop_event):
+    final_file = f'csv/25.KBDIO/{today}/KBDIO.csv'
+    if not os.path.exists(f'csv/25.KBDIO/{today}'):
+        os.makedirs(f'csv/25.KBDIO/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -116,10 +116,13 @@ def kbdio_main_crw(search,start_date, end_date):
     page_num = 10
     stop_flag = False
 
-    domain_df = pd.read_excel('../(언진) 전처리용 도메인 주소.xlsx')
+    domain_df = pd.read_excel('(언진) 전처리용 도메인 주소.xlsx')
     valid_domains = domain_df['도메인'].dropna().unique().tolist()
 
     while True:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         try:
             url = f"https://www.kbdio.com/?page={page_num}"
             logging.info(f"[페이지 {page_num}] 접근 중: {url}")
@@ -134,6 +137,8 @@ def kbdio_main_crw(search,start_date, end_date):
                 break
 
             for block in article_blocks:
+                if stop_event.is_set():
+                    break
                 try:
                     a_tag = block.select_one('a.list-link')
 
@@ -178,6 +183,6 @@ def kbdio_main_crw(search,start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
-
-    csv_to_excel(final_file)
+    if not stop_event.is_set():
+     csv_to_excel(final_file)
 

@@ -110,8 +110,8 @@ def process_file(
     #비신탁사 전처리
     df_filtered = filter_untrusted_posts(
         df3,
-        untrusted_file="../비신탁사_저작권문구+도메인주소.xlsx",
-        trusted_file="../(언진) 전처리용 도메인 주소.xlsx"
+        untrusted_file="비신탁사_저작권문구+도메인주소.xlsx",
+        trusted_file="(언진) 전처리용 도메인 주소.xlsx"
     )
     filtered_df = filter_da(df_filtered)
 

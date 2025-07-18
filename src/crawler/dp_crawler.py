@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'DVD프라임_log_{today}.txt',
@@ -143,7 +143,7 @@ def dp_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/15.DVD프라임/{today}/DVD프라임_{search}.csv')
+        save_to_csv(main_temp, f'csv/15.DVD프라임/{today}/DVD프라임_{search}.csv')
         logging.info(f'csv/15.DVD프라임/{today}/DVD프라임_{search}.csv')
 
     except TimeoutException as e:
@@ -160,9 +160,9 @@ def dp_crw(wd, url, search):
 
 
 
-def dp_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/15.DVD프라임/{today}'):
-        os.makedirs(f'../csv/15.DVD프라임/{today}')
+def dp_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/15.DVD프라임/{today}'):
+        os.makedirs(f'csv/15.DVD프라임/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -176,8 +176,13 @@ def dp_main_crw(searchs, start_date, end_date):
     for cate in category:
         page_num = 1
         for search in searchs:
+            if stop_event.is_set():
+                print("🛑 크롤링 중단됨")
+                break
             page_num = 1
             while True:
+                if stop_event.is_set():
+                    break
                 try:
                     logging.info(f"크롤링 시작-검색어: {search}")
                     logging.info(f"크롤링 카테고리: {cate}")
@@ -196,7 +201,8 @@ def dp_main_crw(searchs, start_date, end_date):
                     logging.info(f"검색목록 찾음.")
 
                     for div in div_tags:
-
+                        if stop_event.is_set():
+                            break
                         after_start_date = False  # 날짜가 시작 날짜 이후인 경우
                         # 공지사항 글 발견시 continue
                         # notice_tag = div.find('span', class_=' list_category_text category_color4').text
@@ -241,6 +247,8 @@ def dp_main_crw(searchs, start_date, end_date):
                 page_tags = soup_dp1.find_all('li', class_='paging_num_li smalleng theme_key2')
                 if page_tags:
                     for page in page_tags:
+                        if stop_event.is_set():
+                            break
                         page_list.append(int(page.find('a').text))
                         max_page = max(page_list)
                         logging.info(f'최대 페이지 수 : {max_page}')
@@ -274,16 +282,16 @@ def dp_main_crw(searchs, start_date, end_date):
                         break
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/DVD프라임'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/DVD프라임'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='DVD프라임', subdir='15.DVD프라임')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='DVD프라임', subdir='15.DVD프라임')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/DVD프라임_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/DVD프라임_raw data_{today}.csv', encoding='utf-8', index=False)
 
 

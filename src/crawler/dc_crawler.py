@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'디시인사이드_log_{today}.txt',  # 로그 파일 이름
@@ -147,7 +147,7 @@ def dc_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/22.디시인사이드/{today}/디시인사이드_{search}.csv')
+        save_to_csv(main_temp, f'csv/22.디시인사이드/{today}/디시인사이드_{search}.csv')
         logging.info(f"저장완료: csv/22.디시인사이드/{today}/디시인사이드_{search}.csv")
 
     except Exception as e:
@@ -155,9 +155,9 @@ def dc_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def dc_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/22.디시인사이드/{today}'):
-        os.makedirs(f'../csv/22.디시인사이드/{today}')
+def dc_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/22.디시인사이드/{today}'):
+        os.makedirs(f'csv/22.디시인사이드/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -168,8 +168,12 @@ def dc_main_crw(searchs, start_date, end_date):
     wd_dp1 = setup_driver()
     for search in searchs:
         page_num = 1
-
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         while True:
+            if stop_event.is_set():
+                break
             try:
                 if page_num == 121:
                     break
@@ -183,7 +187,8 @@ def dc_main_crw(searchs, start_date, end_date):
                 li_tags = soup_dp1.find('ul', class_='sch_result_list').find_all('li')
 
                 for li in li_tags:
-
+                    if stop_event.is_set():
+                        break
                     after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
                     try:
@@ -216,14 +221,15 @@ def dc_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
-    result_dir = '../결과/디시인사이드'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+    if not stop_event.is_set():
+        result_dir = '결과/디시인사이드'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='디시인사이드', subdir='22.디시인사이드')
-        for search in searchs
-    ])
+        all_data = pd.concat([
+            result_csv_data(search, platform='디시인사이드', subdir='22.디시인사이드')
+            for search in searchs
+        ])
 
-    all_data.to_csv(f'{result_dir}/디시인사이드_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/디시인사이드_raw data_{today}.csv', encoding='utf-8', index=False)
 

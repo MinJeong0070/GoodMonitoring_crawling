@@ -61,8 +61,8 @@ def random_sleep(min_time=1, max_time=3):
     time.sleep(sleep_time)
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 # 로그 설정
 logging.basicConfig(
@@ -221,7 +221,7 @@ def instiz_crw(wd, url, search, date):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/7.인스티즈/{today}/인스티즈_{search}.csv')
+        save_to_csv(main_temp, f'csv/7.인스티즈/{today}/인스티즈_{search}.csv')
         logging.info(f'csv/7.인스티즈/{today}/인스티즈_{search}.csv')
 
     except TimeoutException as e:
@@ -268,7 +268,7 @@ def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls):
 
         # if date.day <= 7:
 
-        url = 'https:' + div.find('a').get('href')
+        url = div.find('a').get('href')
         if url not in collected_urls:
             logging.info(f"url 찾음: {url}")
             collected_urls.add(url)
@@ -277,7 +277,8 @@ def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls):
     return after_start_date
 
 
-def instiz_main_crw(searchs, start_date, end_date):
+
+def instiz_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'../csv/7.인스티즈/{today}'):
         os.makedirs(f'../csv/7.인스티즈/{today}')
         print(f"폴더 생성 완료: {today}")
@@ -292,7 +293,12 @@ def instiz_main_crw(searchs, start_date, end_date):
     # 수집할 게시판
     category = ['pt', 'name', 'name_enter']
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         for cate in category:
+            if stop_event.is_set():
+                break
             collected_urls = set()  # 이미 수집한 URL을 저장
 
             try:
@@ -305,6 +311,8 @@ def instiz_main_crw(searchs, start_date, end_date):
                 # soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
                 while True:
+                    if stop_event.is_set():
+                        break
                     # 검색결과 리스트
                     after_start_date = None
                     after_start_date = result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls)
@@ -330,16 +338,14 @@ def instiz_main_crw(searchs, start_date, end_date):
                 break
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/인스티즈'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/인스티즈'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='인스티즈', subdir='7.인스티즈')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='인스티즈', subdir='7.인스티즈')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/인스티즈_raw data_{today}.csv', encoding='utf-8', index=False)
-
-
+        all_data.to_csv(f'{result_dir}/인스티즈_raw data_{today}.csv', encoding='utf-8', index=False)

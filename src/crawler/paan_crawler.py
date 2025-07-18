@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'네이트판_log_{today}.txt',
@@ -137,7 +137,7 @@ def pann_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/6.네이트판/{today}/네이트판_{search}.csv')
+        save_to_csv(main_temp, f'csv/6.네이트판/{today}/네이트판_{search}.csv')
         logging.info(f'저장 완료: csv/6.네이트판/{today}/네이트판_{search}.csv')
 
     except TimeoutException as e:
@@ -153,9 +153,9 @@ def pann_crw(wd, url, search):
         return None
 
 
-def paan_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/6.네이트판/{today}'):
-        os.makedirs(f'../csv/6.네이트판/{today}')
+def paan_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/6.네이트판/{today}'):
+        os.makedirs(f'csv/6.네이트판/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -165,9 +165,14 @@ def paan_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
 
         while True:
+            if stop_event.is_set():
+                break
             try:
                 logging.info(f"검색어: {search}")
                 url_dp1 = f'https://pann.nate.com/search/talk?q={search}&sort=DD&page={page_num}'
@@ -189,7 +194,8 @@ def paan_main_crw(searchs, start_date, end_date):
                 tr_tags = soup_dp1.find('ul', class_='s_list').find_all('li')
                 logging.info(f"검색목록 찾음.")
                 for tr in tr_tags:
-
+                    if stop_event.is_set():
+                        break
                     after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
                     date_str = tr.find('span', class_='date').text
@@ -223,15 +229,15 @@ def paan_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/네이트판'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/네이트판'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='네이트판', subdir='6.네이트판')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='네이트판', subdir='6.네이트판')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/네이트판_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/네이트판_raw data_{today}.csv', encoding='utf-8', index=False)
 

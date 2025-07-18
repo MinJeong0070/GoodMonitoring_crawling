@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'루리웹_log_{today}.txt',  # 로그 파일 이름
@@ -144,7 +144,7 @@ def rw_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/4.루리웹/{today}/루리웹_{search}.csv')
+        save_to_csv(main_temp, f'csv/4.루리웹/{today}/루리웹_{search}.csv')
         logging.info(f"저장완료: {search}")
 
     except Exception as e:
@@ -153,9 +153,9 @@ def rw_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def rw_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/4.루리웹/{today}'):
-        os.makedirs(f'../csv/4.루리웹/{today}')
+def rw_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/4.루리웹/{today}'):
+        os.makedirs(f'csv/4.루리웹/{today}')
         print(f"폴더 생성 완료: {today}")
 
     logging.info(f"========================================================")
@@ -165,9 +165,14 @@ def rw_main_crw(searchs, start_date, end_date):
     wd_dp1 = setup_driver()
 
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
 
         while True:
+            if stop_event.is_set():
+                break
             try:
                 url_dp1 = f'https://bbs.ruliweb.com/search?q={search}&page={page_num}#board_search&gsc.tab=0&gsc.q={search}&gsc.page=1'
                 wd_dp1.get(url_dp1)
@@ -182,6 +187,8 @@ def rw_main_crw(searchs, start_date, end_date):
                 li_tags = soup_dp1.find('div', id='board_search').find_all('li', class_="search_result_item")
 
                 for li in li_tags:
+                    if stop_event.is_set():
+                        break
                     after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
                     try:
@@ -213,16 +220,16 @@ def rw_main_crw(searchs, start_date, end_date):
                 break
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/루리웹'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/루리웹'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='루리웹', subdir='4.루리웹')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='루리웹', subdir='4.루리웹')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/루리웹_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/루리웹_raw data_{today}.csv', encoding='utf-8', index=False)
 
 

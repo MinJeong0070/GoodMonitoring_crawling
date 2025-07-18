@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 # 로그 설정
 logging.basicConfig(
     filename=f'오늘의유머_log_{today}.txt',
@@ -130,7 +130,7 @@ def todayhumor_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/5.오늘의유머/{today}/오늘의유머_{search}.csv')
+        save_to_csv(main_temp, f'csv/5.오늘의유머/{today}/오늘의유머_{search}.csv')
         logging.info(f'csv/5.오늘의유머/{today}/오늘의유머_{search}.csv')
 
     except TimeoutException as e:
@@ -146,9 +146,9 @@ def todayhumor_crw(wd, url, search):
         return None
 
 
-def todayhumor_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/5.오늘의유머/{today}'):
-        os.makedirs(f'../csv/5.오늘의유머/{today}')
+def todayhumor_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/5.오늘의유머/{today}'):
+        os.makedirs(f'csv/5.오늘의유머/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -158,9 +158,14 @@ def todayhumor_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
 
         while True:
+            if stop_event.is_set():
+                break
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
 
@@ -180,7 +185,8 @@ def todayhumor_main_crw(searchs, start_date, end_date):
                     break  # → 다음 검색어로 이동
                 after_start_date = False
                 for tr in tr_tags:
-
+                    if stop_event.is_set():
+                        break
                     date_str = tr.find('td', class_='date').text
                     date_str = '20' + date_str
                     date = datetime.strptime(date_str, '%Y/%m/%d %H:%M').date()
@@ -211,13 +217,14 @@ def todayhumor_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
-    result_dir = '../결과/오늘의유머'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+    if not stop_event.is_set():
+        result_dir = '결과/오늘의유머'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='오늘의유머', subdir='5.오늘의유머')
-        for search in searchs
-    ])
+        all_data = pd.concat([
+            result_csv_data(search, platform='오늘의유머', subdir='5.오늘의유머')
+            for search in searchs
+        ])
 
-    all_data.to_csv(f'{result_dir}/오늘의유머_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/오늘의유머_raw data_{today}.csv', encoding='utf-8', index=False)

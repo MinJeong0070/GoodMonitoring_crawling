@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 # 로그 설정
 logging.basicConfig(
@@ -92,7 +92,7 @@ def inven_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/3.인벤/{today}/인벤_{search}.csv')
+        save_to_csv(main_temp, f'csv/3.인벤/{today}/인벤_{search}.csv')
         logging.info(f"저장완료: {search}")
     except Exception as e:
         logging.error(f"오류 발생: {e}")
@@ -100,9 +100,9 @@ def inven_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def inven_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/3.인벤/{today}'):
-        os.makedirs(f'../csv/3.인벤/{today}')
+def inven_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/3.인벤/{today}'):
+        os.makedirs(f'csv/3.인벤/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -112,10 +112,15 @@ def inven_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
         start_date_str = start_date.strftime('%Y%m%d')
         end_date_str = end_date.strftime('%Y%m%d')
         while True:
+            if stop_event.is_set():
+                break
             try:
                 url_dp1 = f'https://www.inven.co.kr/search/webzine/article/{search}/{page_num}?sDate={start_date_str}&eDate={end_date_str}&dt=s'
                 logging.info(f"접속")
@@ -140,6 +145,8 @@ def inven_main_crw(searchs, start_date, end_date):
                 li_tags = soup_dp1.find('ul', class_='news_list').find_all('li')
                 logging.info(f"검색결과 찾음")
                 for li in li_tags:
+                    if stop_event.is_set():
+                        break
                     url = li.find('a', class_='name').get('href')
                     logging.info(f"url 찾음 : {url}")
                     inven_crw(wd, url, search)
@@ -155,14 +162,14 @@ def inven_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
+    if not stop_event.is_set():
+        result_dir = '결과/인벤'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/인벤'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='인벤', subdir='3.인벤')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='인벤', subdir='3.인벤')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/인벤_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/인벤_raw data_{today}.csv', encoding='utf-8', index=False)

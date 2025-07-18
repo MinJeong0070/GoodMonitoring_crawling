@@ -2,11 +2,14 @@ import tkinter as tk
 from tkinter import ttk
 from tkcalendar import DateEntry
 from datetime import datetime
+
 class CrawlerGUI:
     def __init__(self, root, site_list):
         self.root = root
         self.root.title("웹 크롤러 GUI")
         self.root.geometry("500x400")
+
+        self.should_stop = False
 
         self.site_combo = self.create_site_selector(site_list)
         self.start_entry = self.create_date_entry("시작일 (YYYY-MM-DD):", "2025-06-01")
@@ -33,6 +36,11 @@ class CrawlerGUI:
         label = tk.Label(self.root, text="")
         label.pack()
         return label
+
+    def stop_crawler(self):
+        self.should_stop = True
+        self.status_label.config(text="⛔ 크롤링 중단 요청됨")
+
 
     def create_log_text(self):
         frame = tk.Frame(self.root)

@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import sys
 import logging
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -11,10 +12,14 @@ from datetime import datetime
 
 from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
+# 현재 경로에서 src를 모듈처럼 인식되도록 경로 추가
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(current_dir))
+
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'동사로마닷컴_log_{today}.txt',  # 로그 파일 이름
@@ -136,7 +141,7 @@ def dongsaroma_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/16.동사로마닷컴/{today}/동사로마닷컴_{search}.csv')
+        save_to_csv(main_temp, f'csv/16.동사로마닷컴/{today}/동사로마닷컴_{search}.csv')
         logging.info(f"저장완료: csv/16.동사로마닷컴/{today}/동사로마닷컴_{search}.csv")
 
     except Exception as e:
@@ -144,9 +149,9 @@ def dongsaroma_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def dongsaroma_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/16.동사로마닷컴/{today}'):
-        os.makedirs(f'../csv/16.동사로마닷컴/{today}')
+def dongsaroma_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/16.동사로마닷컴/{today}'):
+        os.makedirs(f'csv/16.동사로마닷컴/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -157,8 +162,12 @@ def dongsaroma_main_crw(searchs, start_date, end_date):
     wd_dp1 = setup_driver()
     for search in searchs:
         page_num = 1
-
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         while True:
+            if stop_event.is_set():
+                break
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
                 url = f'https://www.dongsaroma.com/search?q={search}&page={page_num}'
@@ -176,7 +185,8 @@ def dongsaroma_main_crw(searchs, start_date, end_date):
                 if not a_tags:
                     break
                 for a in a_tags:
-
+                    if stop_event.is_set():
+                        break
                     after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
                     try:
@@ -212,7 +222,7 @@ def dongsaroma_main_crw(searchs, start_date, end_date):
     wd.quit()
     wd_dp1.quit()
 
-    result_dir = '../결과/동사로마닷컴'
+    result_dir = '결과/동사로마닷컴'
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 

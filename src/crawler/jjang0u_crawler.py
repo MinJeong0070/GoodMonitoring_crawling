@@ -13,8 +13,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 # 로그 설정
 logging.basicConfig(
@@ -137,7 +137,7 @@ def jjang0u_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/19.짱공유닷컴/{today}/짱공유닷컴_{search}.csv')
+        save_to_csv(main_temp, f'csv/19.짱공유닷컴/{today}/짱공유닷컴_{search}.csv')
         logging.info(f"저장완료: csv/19.짱공유닷컴/{today}/짱공유닷컴_{search}.csv")
 
     except Exception as e:
@@ -146,9 +146,9 @@ def jjang0u_crw(wd, url, search):
 
 
 # Web scraping
-def jjang0u_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/19.짱공유닷컴/{today}'):
-        os.makedirs(f'../csv/19.짱공유닷컴/{today}')
+def jjang0u_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/19.짱공유닷컴/{today}'):
+        os.makedirs(f'csv/19.짱공유닷컴/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -158,9 +158,14 @@ def jjang0u_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
 
         while True:
+            if stop_event.is_set():
+                break
             after_start_date = False  # 날짜가 시작 날짜 이후인 경우
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
@@ -180,6 +185,8 @@ def jjang0u_main_crw(searchs, start_date, end_date):
                     break
 
                 for li in li_tags:
+                    if stop_event.is_set():
+                        break
                     try:
 
                         date_str = li.find('span', class_='date').text.strip()
@@ -224,17 +231,17 @@ def jjang0u_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/짱공유닷컴'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/짱공유닷컴'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='짱공유닷컴', subdir='19.짱공유닷컴')
+            for search in searchs
+        ])
+        print(all_data.count())
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='짱공유닷컴', subdir='19.짱공유닷컴')
-        for search in searchs
-    ])
-    print(all_data.count())
-
-    all_data.to_csv(f'{result_dir}/짱공유닷컴_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/짱공유닷컴_raw data_{today}.csv', encoding='utf-8', index=False)
 
 

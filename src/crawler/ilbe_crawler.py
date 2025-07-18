@@ -14,8 +14,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 # 로그 설정
 logging.basicConfig(
@@ -139,7 +139,7 @@ def ilbe_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/10.일간베스트/{today}/일간베스트_{search}.csv')
+        save_to_csv(main_temp, f'csv/10.일간베스트/{today}/일간베스트_{search}.csv')
         logging.info(f'csv/10.일간베스트/{today}/일간베스트_{search}.csv')
 
     except TimeoutException as e:
@@ -156,9 +156,9 @@ def ilbe_crw(wd, url, search):
 
 
 # Web scraping
-def ilbe_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/10.일간베스트/{today}'):
-        os.makedirs(f'../csv/10.일간베스트/{today}')
+def ilbe_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/10.일간베스트/{today}'):
+        os.makedirs(f'csv/10.일간베스트/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -168,10 +168,15 @@ def ilbe_main_crw(searchs, start_date, end_date):
     wd = setup_driver()
     wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
         page_num = 1
         collected_data = []
 
         while True:
+            if stop_event.is_set():
+                break
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
                 url = f'https://www.ilbe.com/search?docType=doc&searchType=title_content&page={page_num}&q={search}'
@@ -190,6 +195,8 @@ def ilbe_main_crw(searchs, start_date, end_date):
                     break
 
                 for li in li_tags:
+                    if stop_event.is_set():
+                        break
                     date_str = li.find('span', class_='date').text
                     date = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S').date()
                     logging.info(f"날짜 찾음")
@@ -220,15 +227,15 @@ def ilbe_main_crw(searchs, start_date, end_date):
 
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/일간베스트'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/일간베스트'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='일간베스트', subdir='10.일간베스트')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='일간베스트', subdir='10.일간베스트')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/일간베스트_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/일간베스트_raw data_{today}.csv', encoding='utf-8', index=False)
 

@@ -13,8 +13,8 @@ from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
     filename=f'포모스_log_{today}.txt',  # 로그 파일 이름
@@ -134,7 +134,7 @@ def fomos_crw(wd, url, search):
         })
 
         # 데이터 저장
-        save_to_csv(main_temp, f'../csv/18.포모스/{today}/포모스_{search}.csv')
+        save_to_csv(main_temp, f'csv/18.포모스/{today}/포모스_{search}.csv')
         logging.info(f'csv/18.포모스/{today}/포모스_{search}.csv')
 
     except Exception as e:
@@ -142,9 +142,9 @@ def fomos_crw(wd, url, search):
         return pd.DataFrame()
 
 
-def fomos_main_crw(searchs, start_date, end_date):
-    if not os.path.exists(f'../csv/18.포모스/{today}'):
-        os.makedirs(f'../csv/18.포모스/{today}')
+def fomos_main_crw(searchs, start_date, end_date, stop_event):
+    if not os.path.exists(f'csv/18.포모스/{today}'):
+        os.makedirs(f'csv/18.포모스/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -155,9 +155,16 @@ def fomos_main_crw(searchs, start_date, end_date):
     wd_dp1 = setup_driver()
     # wd_dp1 = setup_driver()
     for search in searchs:
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
+
         page_num = 1
 
         while True:
+            if stop_event.is_set():
+                break
+
             try:
                 logging.info(f"크롤링 시작-검색어: {search}")
                 url = f'https://www.fomos.kr/search/list?menu=talk&fword={search}&page={page_num}'
@@ -176,6 +183,8 @@ def fomos_main_crw(searchs, start_date, end_date):
                     break
 
                 for li in li_tags:
+                    if stop_event.is_set():
+                        break
                     url_str = li.find('p', class_='tit').find('a').get('href')
                     url = 'https://www.fomos.kr' + url_str
                     logging.info(f"url 찾음.")
@@ -191,14 +200,14 @@ def fomos_main_crw(searchs, start_date, end_date):
                 break
     wd.quit()
     wd_dp1.quit()
+    if not stop_event.is_set():
+        result_dir = '결과/포모스'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
 
-    result_dir = '../결과/포모스'
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
+        all_data = pd.concat([
+            result_csv_data(search, platform='포모스', subdir='18.포모스')
+            for search in searchs
+        ])
 
-    all_data = pd.concat([
-        result_csv_data(search, platform='포모스', subdir='18.포모스')
-        for search in searchs
-    ])
-
-    all_data.to_csv(f'{result_dir}/포모스_raw data_{today}.csv', encoding='utf-8', index=False)
+        all_data.to_csv(f'{result_dir}/포모스_raw data_{today}.csv', encoding='utf-8', index=False)
