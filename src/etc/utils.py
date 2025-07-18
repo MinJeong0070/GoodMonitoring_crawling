@@ -8,8 +8,8 @@ import undetected_chromedriver as uc
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'../log'):
-    os.makedirs(f'../log')
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 def setup_driver():
     logging.info("웹드라이버 시작")
@@ -27,12 +27,12 @@ def setup_driver():
     return driver
 
 
-def result_csv_data(search, platform, subdir, base_path='../csv'):
+def result_csv_data(search, platform, subdir, base_path='csv'):
 
     file_path = os.path.join(base_path, subdir, today, f'{platform}_{search}.csv')
 
     if not os.path.isfile(file_path):
-        print(f"[스킵] 파일이 존재하지 않음: {file_path}")
+        # print(f"[스킵] 파일이 존재하지 않음: {file_path}")
         return pd.DataFrame()
     try:
         df = pd.read_csv(file_path, encoding='utf-8')
