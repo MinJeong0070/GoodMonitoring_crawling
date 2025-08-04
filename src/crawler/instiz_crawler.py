@@ -238,14 +238,15 @@ def instiz_crw(wd, url, search, date):
 
 
 # 검색결과 요소 for문
-def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls):
+def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls, stop_event):
     soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
     div_tags = soup_dp1.find_all('div', class_='result_search')
     logging.info(f"검색목록 찾음.")
     after_start_date = False
     for div in div_tags:
         # 공지사항 패스
-
+        if stop_event.is_set():
+            break
         after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
         try:
@@ -270,6 +271,8 @@ def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls):
 
         url = div.find('a').get('href')
         if url not in collected_urls:
+            if stop_event.is_set():
+                break
             logging.info(f"url 찾음: {url}")
             collected_urls.add(url)
             instiz_crw(wd, url, search, date)
@@ -279,8 +282,8 @@ def result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls):
 
 
 def instiz_main_crw(searchs, start_date, end_date,stop_event):
-    if not os.path.exists(f'../csv/7.인스티즈/{today}'):
-        os.makedirs(f'../csv/7.인스티즈/{today}')
+    if not os.path.exists(f'csv/7.인스티즈/{today}'):
+        os.makedirs(f'csv/7.인스티즈/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
@@ -315,7 +318,7 @@ def instiz_main_crw(searchs, start_date, end_date,stop_event):
                         break
                     # 검색결과 리스트
                     after_start_date = None
-                    after_start_date = result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls)
+                    after_start_date = result_soup(wd, wd_dp1, start_date, end_date, search, collected_urls, stop_event)
 
                     if after_start_date:
                         break
