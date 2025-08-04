@@ -113,7 +113,7 @@ def kbdio_main_crw(search,start_date, end_date,stop_event):
 
     wd = setup_driver()
     wd_dp1 = setup_driver()
-    page_num = 10
+    page_num = 250
     stop_flag = False
 
     domain_df = pd.read_excel('(언진) 전처리용 도메인 주소.xlsx')

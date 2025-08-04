@@ -7,7 +7,7 @@ class CrawlerGUI:
     def __init__(self, root, site_list):
         self.root = root
         self.root.title("웹 크롤러 GUI")
-        self.root.geometry("500x400")
+        self.root.geometry("600x500")
 
         self.should_stop = False
 

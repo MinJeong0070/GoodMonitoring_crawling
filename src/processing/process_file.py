@@ -60,8 +60,6 @@ def filter_da(df_filtered):
     return df_final
 
 
-
-
 def process_file(
     search_excel_path,
     input_csv_template,
