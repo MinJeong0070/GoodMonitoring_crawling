@@ -81,9 +81,9 @@ def pann_crw(wd, url, search):
 
         # 게시물 등록일자
         try:
-            date_str = soup.find('div', class_='post-tit-info').find('span', class_='date').get_text()
-            date = datetime.strptime(date_str, '%Y.%m.%d ')
-            date_list.append(date.strftime('%Y-%m-%d '))
+            date_str = soup.find('div', class_='info').find('span', class_='date').get_text(strip=True)
+            date = datetime.strptime(date_str, '%Y.%m.%d %H:%M')  # 시간까지는 여기서 파싱하되
+            date_list.append(date.strftime('%Y-%m-%d'))
             logging.info(f"날짜 추출 성공: {date_str}")
         except Exception as e:
             date_list.append('')
