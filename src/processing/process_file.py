@@ -3,10 +3,11 @@ import re
 import pandas as pd
 from datetime import datetime
 
-def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
+def filter_untrusted_posts(all_data, untrusted_file, trusted_file, media_file):
     # 비신탁사 및 매체사 데이터 로드
     df_untrusted = pd.read_excel(untrusted_file)
     df_trusted = pd.read_excel(trusted_file)
+    df_media = pd.read_excel(media_file)
 
     # 비신탁사 저작권 문구 및 도메인 리스트 생성
     untrusted_copyrights = df_untrusted["저작권 문구"].dropna().tolist()
@@ -15,14 +16,21 @@ def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
     # 매체사 도메인 리스트 생성
     trusted_domains = df_trusted["도메인"].dropna().tolist()
 
+    # 비신탁사 매체명 리스트 생성
+    untrusted_media_names = df_media["매체명"].dropna().tolist()
+
     # 필터링 함수 정의
     def should_remove(post_content):
         post_content = str(post_content)
         contains_untrusted_copyright = any(c in post_content for c in untrusted_copyrights)
         contains_untrusted_domain = any(d in post_content for d in untrusted_domains)
+        contains_untrusted_media = any(m in post_content for m in untrusted_media_names)
         contains_trusted_domain = any(t in post_content for t in trusted_domains)
 
-        return (contains_untrusted_copyright or contains_untrusted_domain) and not contains_trusted_domain
+        return (
+            (contains_untrusted_copyright or contains_untrusted_domain or contains_untrusted_media)
+            and not contains_trusted_domain
+        )
 
     # 결측값 방지
     content_series = all_data["게시물 내용"].fillna("")
@@ -36,7 +44,8 @@ def filter_untrusted_posts(all_data, untrusted_file, trusted_file):
 
     return df_filtered
 
-def filter_da(df_filtered):
+
+def filter_empty_image_and_no_da(df_filtered):
     def has_valid_da(text):
         text = str(text)
         matches = list(re.finditer(r"다\.", text))
@@ -60,6 +69,7 @@ def filter_da(df_filtered):
     return df_final
 
 
+
 def process_file(
     search_excel_path,
     input_csv_template,
@@ -68,22 +78,16 @@ def process_file(
     target_month
 ):
     result_dir = '결과'
-
-    # 결과 폴더 생성
     os.makedirs(result_dir, exist_ok=True)
 
-    # 검색어 목록 불러오기
     pd_search = pd.read_excel(search_excel_path, sheet_name='검색어 목록')
     searchs = pd_search['검색어명']
 
-
-    # 게시물 등록일자 전처리
     try:
         df = pd.read_csv(input_csv_template, encoding="utf-8")
     except UnicodeDecodeError:
         print("⚠️ UTF-8 디코딩 실패, cp949로 재시도합니다.")
         df = pd.read_csv(input_csv_template, encoding="cp949")
-
 
     df['게시물 URL'] = df['게시물 URL'].apply(lambda x: x.split('&keyword=')[0])
     df['게시물 등록일자'] = pd.to_datetime(df['게시물 등록일자'], errors='coerce')
@@ -97,28 +101,37 @@ def process_file(
         (~df['게시물 내용'].fillna('').str.contains('신춘문예', case=False)) &
         (~df['게시물 제목'].fillna('').str.contains('신춘문예', case=False)) &
         (~df['계정명'].fillna('').str.contains('뽐뿌뉴스', case=False))
-        ]
-    # 등록일자 전처리
-    df2 = df1 [
+    ]
+
+    df2 = df1[
         (df1['게시물 등록일자'].dt.year == target_year) &
         (df1['게시물 등록일자'].dt.month == target_month)
     ]
-    #URL 정리
+
     df3 = df2.drop_duplicates(subset=['게시물 URL'], keep='first')
-    #비신탁사 전처리
-    df_filtered = filter_untrusted_posts(
+
+    # 비신탁사 매체명 기반 필터링
+    df_filtered, df_removed = filter_untrusted_posts(
         df3,
         untrusted_file="비신탁사_저작권문구+도메인주소.xlsx",
-        trusted_file="(언진) 전처리용 도메인 주소.xlsx"
+        trusted_file="(언진) 전처리용 도메인 주소.xlsx",
+        media_file="비신탁사 매체명(전처리).xlsx"
     )
-    filtered_df = filter_da(df_filtered)
 
-    # 전처리 완료 파일을 Excel로 저장
+    # '다.' 기준 추가 필터링
+    filtered_df = filter_empty_image_and_no_da(df_filtered)
+
+    # 결과 파일 저장
     filtered_df.to_excel(output_excel_path, index=False)
+
+    removed_path = output_excel_path.replace(".xlsx", "_삭제됨.xlsx")
+    df_removed.to_excel(removed_path, index=False)
+
     print(f"전처리된 데이터 저장 완료 (Excel): {output_excel_path}")
+    print(f"비신탁사 매체명 포함 게시물 저장 완료 (삭제됨): {removed_path}")
     print(f"전처리 이전 : {len(df)}개\n"
           f"전처리 이후 : {len(filtered_df)}개\n"
-          f"삭제 개수 : {len(df)-len(filtered_df)}개")
+          f"삭제 개수 : {len(df) - len(filtered_df)}개")
 
     return filtered_df
 
