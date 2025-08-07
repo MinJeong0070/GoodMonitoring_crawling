@@ -111,7 +111,7 @@ def process_file(
     df3 = df2.drop_duplicates(subset=['게시물 URL'], keep='first')
 
     # 비신탁사 매체명 기반 필터링
-    df_filtered, df_removed = filter_untrusted_posts(
+    df_filtered = filter_untrusted_posts(
         df3,
         untrusted_file="비신탁사_저작권문구+도메인주소.xlsx",
         trusted_file="(언진) 전처리용 도메인 주소.xlsx",
@@ -124,11 +124,8 @@ def process_file(
     # 결과 파일 저장
     filtered_df.to_excel(output_excel_path, index=False)
 
-    removed_path = output_excel_path.replace(".xlsx", "_삭제됨.xlsx")
-    df_removed.to_excel(removed_path, index=False)
 
     print(f"전처리된 데이터 저장 완료 (Excel): {output_excel_path}")
-    print(f"비신탁사 매체명 포함 게시물 저장 완료 (삭제됨): {removed_path}")
     print(f"전처리 이전 : {len(df)}개\n"
           f"전처리 이후 : {len(filtered_df)}개\n"
           f"삭제 개수 : {len(df) - len(filtered_df)}개")
