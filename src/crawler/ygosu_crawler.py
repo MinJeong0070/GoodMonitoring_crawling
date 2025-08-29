@@ -31,16 +31,38 @@ def ygosu_crw(wd, url, search):
         time.sleep(random.uniform(2, 4))
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
-        title = soup.find('h1', class_='view-title').get_text(strip=True)
-        content_div = soup.find('div', class_='view-content')
+        # 제목
+        title_tag = soup.find('div', class_='tit all_corner_thin')
+        if not title_tag:
+            # 혹시 구조가 조금 다를 때를 대비한 fallback
+            title_tag = soup.find('h3')
+        title = title_tag.find('h3').get_text(" ", strip=True) if title_tag and title_tag.find('h3') else ""
+
+        # 본문
+        content_div = soup.find('div', class_='container')
+        # 스크립트/스타일 제거
+        for t in content_div.find_all(['script', 'style']):
+            t.decompose()
         content = content_div.get_text(separator='\n', strip=True)
         content = re.sub(r'http[s]?://\S+', '', content)  # 링크 제거
 
-        info_box = soup.find('div', class_='view-info')
-        date_text = info_box.find_all('span')[1].get_text(strip=True)
-        writer = info_box.find('a').get_text(strip=True)
-
-        post_date = datetime.strptime(date_text, '%Y-%m-%d %H:%M:%S').date()
+        # 작성자 / 날짜
+        info = soup.find('div', class_='info')
+        # 작성자
+        writer = ""
+        nick = info.select_one('.nickname a') if info else None
+        if nick:
+            writer = nick.get_text(strip=True)
+        # 날짜
+        date_text = ""
+        date_div = info.select_one('.bottom .date') if info else None
+        if date_div:
+            # "2025-08-09 14:44:17 (3일 전) / READ : 47" 에서 앞 타임스탬프만 뽑기
+            m = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', date_div.get_text(strip=True))
+            if m:
+                date_text = m.group(1)
+        # date → date 객체
+        post_date = datetime.strptime(date_text, '%Y-%m-%d %H:%M:%S').date() if date_text else None
 
         df = pd.DataFrame({
             "검색어": [search],
@@ -57,7 +79,6 @@ def ygosu_crw(wd, url, search):
 
     except Exception as e:
         logging.error(f"[상세 페이지 오류] {url} - {e}")
-
 
 # 메인 크롤링 함수
 def ygosu_main_crw(searchs, start_date, end_date, stop_event):
@@ -84,7 +105,7 @@ def ygosu_main_crw(searchs, start_date, end_date, stop_event):
             if stop_event.is_set():
                 break
 
-            search_url = f"https://ygosu.com/all_search/?add_search_log=Y&keyword={search}&page={page_num}"
+            search_url = f"https://ygosu.com/all_search/?add_search_log=Y&keyword={search}&search_field=s&current_page={page_num}"
             wd_dp1.get(search_url)
             time.sleep(random.uniform(2, 4))
             soup = BeautifulSoup(wd_dp1.page_source, 'html.parser')
