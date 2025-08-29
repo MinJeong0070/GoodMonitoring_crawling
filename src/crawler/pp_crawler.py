@@ -187,7 +187,8 @@ def pp_main_crw(searchs, start_date, end_date, stop_event):
                 li_tags = soup_dp1.find('div', class_='results_board').find_all('div', class_="content")
 
                 for li in li_tags:
-
+                    if stop_event.is_set():
+                        break
                     try:
                         date_str = li.find('p', class_='desc').find_all('span')[2].get_text()
                         date = datetime.strptime(date_str, '%Y.%m.%d').date()

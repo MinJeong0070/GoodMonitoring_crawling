@@ -31,6 +31,7 @@ from src.crawler.dc_crawler import dc_main_crw
 from src.crawler.fm_crawler import fm_main_crw
 from src.crawler.dq_crawler import dq_main_crw
 from src.crawler.ygosu_crawler import ygosu_main_crw
+from src.crawler.etoland_crawler import etoland_main_crw
 # from src.crawler.kbdio_crawler import kbdio_main_crw
 # from src.crawler.kbdiom_crawler import kbdiom_main_crw
 from src.processing.process_file import process_file
@@ -73,6 +74,7 @@ crawlers = {
     "에펨코리아": fm_main_crw,
     "더쿠":dq_main_crw,
     "와이고수":ygosu_main_crw,
+    "이토랜드":etoland_main_crw
     # "케이비디오":kbdio_main_crw,
     # "티스토리 케이비디오":kbdiom_main_crw
 
@@ -118,7 +120,7 @@ def crawler_threaded(gui):
     try:
         gui.status_label.config(text=f"[{site}] 크롤링 중...")
         crw_func = crawlers[site]
-        # crw_func(searchs, start_date, end_date, stop_event)
+        crw_func(searchs, start_date, end_date, stop_event)
         if stop_event.is_set():
             return
         gui.status_label.config(text="전처리 중...")
@@ -128,7 +130,7 @@ def crawler_threaded(gui):
 
         process_file(
             search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=f"결과/{site}/{site}_raw data_250804.csv",
+            input_csv_template=f"결과/{site}/{site}_raw data_{today}.csv",
             output_excel_path=f"결과/1.전처리/{site}_전처리_{today}.xlsx",
             target_year=end_date.year,
             target_month=end_date.month
