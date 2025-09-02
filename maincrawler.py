@@ -35,6 +35,7 @@ from src.crawler.etoland_crawler import etoland_main_crw
 # from src.crawler.kbdio_crawler import kbdio_main_crw
 # from src.crawler.kbdiom_crawler import kbdiom_main_crw
 from src.processing.process_file import process_file
+from tkinter import filedialog
 
 # 검색어 추출
 pd_search = pd.read_excel("(언진) 2025 매체사 검색어 목록.xlsx", sheet_name='검색어 목록')
@@ -139,6 +140,64 @@ def crawler_threaded(gui):
     except Exception as e:
         gui.status_label.config(text=f"❌ 에러 발생: {e}")
 
+# 이미 생성된 row CSV를 선택해서 단독 전처리 실행하는 함수
+def run_preprocess(gui):  # [ADD]
+    """
+    - 파일 선택 다이얼로그로 raw CSV를 고른 뒤
+    - 끝 날짜 입력값의 연/월을 전처리 파라미터로 사용
+    - 파일명에서 {사이트}_raw data_{날짜}.csv 규칙을 이용해 사이트명 자동 추출
+    """
+    try:
+        # 끝 날짜에서 연/월 사용
+        end_str = gui.end_entry.get()
+        try:
+            end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
+        except Exception:
+            gui.status_label.config(text="❌ 날짜 형식 오류(끝 날짜). YYYY-MM-DD 형식으로 입력하세요.")
+            return
+
+        # 파일 선택
+        csv_path = filedialog.askopenfilename(
+            title="전처리할 raw CSV 선택",
+            initialdir=os.path.join(os.getcwd(), "결과"),
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        if not csv_path:
+            gui.status_label.config(text="⚠️ 파일 선택이 취소되었습니다.")
+            return
+
+        base = os.path.basename(csv_path)
+        # 기대 규칙: {사이트}_raw data_{YYMMDD}.csv
+        # 안전하게 분리
+        if "_raw data_" in base:
+            site = base.split("_raw data_")[0]
+        else:
+            # 규칙을 따르지 않는 경우, GUI에서 현재 사이트 선택값을 fallback
+            site = gui.site_combo.get() or "SITE"
+
+        today_out = datetime.now().strftime("%y%m%d")
+        out_dir = os.path.join("결과", "1.전처리")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{site}_전처리_{today_out}.xlsx")
+
+        gui.status_label.config(text=f"🧹 전처리 중... ({os.path.basename(csv_path)})")
+        print(f"[INFO] 전처리 입력: {csv_path}")
+        print(f"[INFO] 전처리 출력: {out_path}")
+
+        process_file(
+            search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
+            input_csv_template=csv_path,   # 선택한 파일 그대로 전달
+            output_excel_path=out_path,
+            target_year=end_date.year,
+            target_month=end_date.month
+        )
+        gui.status_label.config(text=f"✅ 전처리 완료: {out_path}")
+        print(f"[DONE] 전처리 완료 -> {out_path}")
+
+    except Exception as e:
+        gui.status_label.config(text=f"❌ 전처리 중 에러: {e}")
+        print(f"[ERROR] 전처리 실패: {e}")
+
 # 실행
 if __name__ == "__main__":
     root = tk.Tk()
@@ -147,4 +206,7 @@ if __name__ == "__main__":
 
     tk.Button(root, text="크롤링 시작", command=lambda: run_crawler(gui)).pack(pady=20)
     tk.Button(root, text="크롤링 중단", command=lambda: stop_crawler(gui)).pack(pady=5)
+
+    # 전처리 단독 실행 버튼
+    tk.Button(root, text="전처리 실행(파일 선택)", command=lambda: run_preprocess(gui)).pack(pady=12)
     root.mainloop()
