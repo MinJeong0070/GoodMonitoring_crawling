@@ -1,4 +1,5 @@
 import os
+from pandas.errors import EmptyDataError
 import sys
 import tkinter as tk
 import threading
@@ -129,9 +130,17 @@ def crawler_threaded(gui):
         if not os.path.exists(f'결과/1.전처리'):
             os.makedirs(f'결과/1.전처리')
 
+        input_path = f"결과/{site}/{site}_raw data_{today}.csv"
+        if is_empty_csv(input_path):
+            gui.status_label.config(
+                text="ℹ️ 크롤링 결과가 0건이어서 전처리할 데이터가 없습니다."
+            )
+            print(f"[INFO] 전처리 스킵(빈 파일): {input_path}")
+            return
+
         process_file(
             search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=f"결과/{site}/{site}_raw data_{today}.csv",
+            input_csv_template=input_path,
             output_excel_path=f"결과/1.전처리/{site}_전처리_{today}.xlsx",
             target_year=end_date.year,
             target_month=end_date.month
@@ -140,12 +149,33 @@ def crawler_threaded(gui):
     except Exception as e:
         gui.status_label.config(text=f"❌ 에러 발생: {e}")
 
+def is_empty_csv(path: str) -> bool:
+    """
+    True  -> 전처리 불가(빈 파일/헤더 없음)
+    False -> 전처리 시도 가능
+    """
+    try:
+        if not os.path.exists(path):
+            return True
+        if os.path.getsize(path) == 0:
+            return True
+        # 헤더 한 줄만 슬쩍 확인 (완전 공백/줄바꿈만 있는 경우)
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            first = f.readline().strip()
+        if first == "":
+            return True
+        return False
+    except Exception:
+        # 점검 실패 시엔 안전하게 전처리 중단 쪽으로
+        return True
+
+
 # 이미 생성된 row CSV를 선택해서 단독 전처리 실행하는 함수
-def run_preprocess(gui):  # [ADD]
+def run_preprocess(gui):
     """
     - 파일 선택 다이얼로그로 raw CSV를 고른 뒤
     - 끝 날짜 입력값의 연/월을 전처리 파라미터로 사용
-    - 파일명에서 {사이트}_raw data_{날짜}.csv 규칙을 이용해 사이트명 자동 추출
+    - 파일명에서 {사이트}_raw data_{날짜}.csv 규칙을 이용해 사이트명 자동 추출(실패 시 GUI 선택값 사용)
     """
     try:
         # 끝 날짜에서 연/월 사용
@@ -168,11 +198,9 @@ def run_preprocess(gui):  # [ADD]
 
         base = os.path.basename(csv_path)
         # 기대 규칙: {사이트}_raw data_{YYMMDD}.csv
-        # 안전하게 분리
         if "_raw data_" in base:
             site = base.split("_raw data_")[0]
         else:
-            # 규칙을 따르지 않는 경우, GUI에서 현재 사이트 선택값을 fallback
             site = gui.site_combo.get() or "SITE"
 
         today_out = datetime.now().strftime("%y%m%d")
@@ -184,19 +212,41 @@ def run_preprocess(gui):  # [ADD]
         print(f"[INFO] 전처리 입력: {csv_path}")
         print(f"[INFO] 전처리 출력: {out_path}")
 
-        process_file(
-            search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
-            input_csv_template=csv_path,   # 선택한 파일 그대로 전달
-            output_excel_path=out_path,
-            target_year=end_date.year,
-            target_month=end_date.month
-        )
+        # ✅ 빈 CSV 방지
+        if is_empty_csv(csv_path):
+            gui.status_label.config(
+                text="ℹ️ 전처리할 내용이 없습니다. (크롤링 결과 0건 또는 파일이 비어있음)"
+            )
+            print(f"[INFO] 전처리 스킵(빈 파일): {csv_path}")
+            return
+
+        # ✅ process_file은 한 번만 호출 + 예외 메시지 친절화
+        try:
+            process_file(
+                search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
+                input_csv_template=csv_path,
+                output_excel_path=out_path,
+                target_year=end_date.year,
+                target_month=end_date.month
+            )
+        except EmptyDataError:
+            gui.status_label.config(text="ℹ️ 전처리할 내용이 없습니다. (빈 CSV)")
+            print(f"[INFO] 전처리 스킵(EmptyDataError): {csv_path}")
+            return
+        except ValueError as ve:
+            if "No columns to parse from file" in str(ve):
+                gui.status_label.config(text="ℹ️ 전처리할 내용이 없습니다. (헤더/컬럼 없음)")
+                print(f"[INFO] 전처리 스킵(No columns to parse): {csv_path}")
+                return
+            raise
+
         gui.status_label.config(text=f"✅ 전처리 완료: {out_path}")
         print(f"[DONE] 전처리 완료 -> {out_path}")
 
     except Exception as e:
         gui.status_label.config(text=f"❌ 전처리 중 에러: {e}")
         print(f"[ERROR] 전처리 실패: {e}")
+
 
 # 실행
 if __name__ == "__main__":
