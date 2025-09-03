@@ -12,8 +12,8 @@ class CrawlerGUI:
         self.should_stop = False
 
         self.site_combo = self.create_site_selector(site_list)
-        self.start_entry = self.create_date_entry("시작일 (YYYY-MM-DD):", "2025-06-01")
-        self.end_entry = self.create_date_entry("종료일 (YYYY-MM-DD):", "2025-06-30")
+        self.start_entry = self.create_date_entry("시작일 (YYYY-MM-DD):", "2025-08-01")
+        self.end_entry = self.create_date_entry("종료일 (YYYY-MM-DD):", "2025-08-31")
         self.status_label = self.create_status_label()
         self.log_text = self.create_log_text()
 
