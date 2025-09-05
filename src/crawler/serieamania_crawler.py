@@ -91,7 +91,9 @@ def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
                     break
         writer_list.append(writer)
 
+        # ✅ 본문만 추출
         content_div = (
+            soup.find('div', id='resContents') or  # 게시물 본문 영역
             soup.find(id='bo_v_con') or
             soup.find('div', class_='view-content') or
             soup.find('article') or
@@ -102,8 +104,9 @@ def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
                 tag.decompose()
             post_content = content_div.get_text(" ", strip=True)
         else:
-            post_content = soup.get_text(" ", strip=True)
-        post_content = re.sub(r'https?://[^\\s]+', '', post_content).strip()
+            post_content = ''
+
+        # ✅ 누락된 append (없으면 DataFrame 생성 시 길이 불일치)
         content_list.append(post_content)
 
         # 키워드 재검증(제목+본문) — 검색엔진의 느슨한 매칭 방지

@@ -47,8 +47,8 @@ searchs = pd_search['검색어명']
 stop_event = Event()
 
 # 기간 설정
-start_date = datetime.strptime('2025-6-1', '%Y-%m-%d').date()
-end_date = datetime.strptime('2025-6-30', '%Y-%m-%d').date()
+start_date = datetime.strptime('2025-8-1', '%Y-%m-%d').date()
+end_date = datetime.strptime('2025-8-31', '%Y-%m-%d').date()
 
 # 사이트별 함수 매핑
 crawlers = {
