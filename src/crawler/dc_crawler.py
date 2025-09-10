@@ -3,233 +3,267 @@ import re
 import time
 import random
 import logging
+import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 from datetime import datetime
 
-from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
+# utils.py 하나에서 모두 가져오도록 통합
+from src.etc.utils import (
+    setup_driver,
+    save_to_csv,
+    clean_title,
+    result_csv_data,
+    safe_get,
+    human_sleep,
+    last_done_page,
+    save_progress,
+)
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'log'):
-    os.makedirs(f'log')
+os.makedirs('log', exist_ok=True)
 
 logging.basicConfig(
-    filename=f'디시인사이드_log_{today}.txt',  # 로그 파일 이름
-    level=logging.INFO,  # 로그 레벨
-    format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
-    encoding='utf-8'  # 인코딩 설정
+    filename=f'디시인사이드_log_{today}.txt',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    encoding='utf-8'
 )
 
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
 
-def dc_crw(wd, url, search):
+# -------------------------------
+# 1) 목록(검색 결과) 수집: requests + BS
+# -------------------------------
+def fetch_list_urls(search: str, page: int):
+    """
+    검색결과 목록 수집 (requests + BeautifulSoup)
+    반환: [(post_url, post_date), ...]
+    """
+    url = f'https://search.dcinside.com/post/p/{page}/sort/latest/q/{search}'
     try:
-        wd.get(f'{url}')
-        sleep_random_time = random.uniform(2, 4)
-        time.sleep(sleep_random_time)
-        WebDriverWait(wd, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".view_content_wrap")))
+        r = requests.get(url, timeout=12, headers={"User-Agent": UA})
+        r.raise_for_status()
+    except Exception as e:
+        logging.warning(f"[fetch_list_urls] 요청 실패 p{page} {search}: {e}")
+        return []
 
-        soup = BeautifulSoup(wd.page_source, 'html.parser')
+    soup = BeautifulSoup(r.text, 'html.parser')
+    ul = soup.find('ul', class_='sch_result_list')
+    if not ul:
+        logging.info(f"[fetch_list_urls] 결과 리스트 없음 p{page} {search}")
+        return []
 
-        search_word_list = []
-        search_plt_list = []
-        writer_list = []
-        url_list = []
-        title_list = []
-        content_list = []
-        date_list = []
-        image_check_list = []
+    out = []
+    for li in ul.find_all('li'):
+        try:
+            date_str = li.find('span', class_='date_time').get_text(strip=True)
+            date = datetime.strptime(date_str, '%Y.%m.%d %H:%M').date()
+            a = li.find('a', class_='tit_txt')
+            href = a.get('href') if a else None
+            if href:
+                out.append((href, date))
+        except Exception:
+            continue
+    return out
 
 
-        raw_title = soup.find('h3', class_='title ub-word').find('span', class_='title_subject').get_text()
-        cleaned_title = clean_title(raw_title)  # 제목 정리 함수 사용
-        title_list.append(cleaned_title)
-        logging.info(f"제목 추출 성공: {cleaned_title}")
+# -------------------------------
+# 2) 상세 게시물 수집: Selenium (+ safe_get)
+# -------------------------------
+def dc_crw_detail(wd, url: str, search: str):
+    """
+    단일 게시물 상세 크롤링 (안전접속 + 요소 미노출 시 스킵)
+    성공 시 DataFrame(1행), 실패/스킵 시 None
+    """
+    ok = safe_get(wd, url)
+    if not ok:
+        logging.warning(f"[detail] safe_get 실패: {url}")
+        return None
 
-        content_div = soup.find('div', class_='write_div')
+    try:
+        WebDriverWait(wd, 12).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".view_content_wrap"))
+        )
+    except TimeoutException:
+        logging.warning(f"[detail] 본문 래퍼 미노출: {url}")
+        return None
 
+    soup = BeautifulSoup(wd.page_source, 'html.parser')
+
+    # 제목
+    title_tag = soup.find('h3', class_='title ub-word')
+    if title_tag:
+        ts = title_tag.find('span', class_='title_subject')
+        raw_title = ts.get_text(strip=True) if ts else ""
+    else:
+        raw_title = ""
+    cleaned_title = clean_title(raw_title)
+
+    # 본문
+    content_div = soup.find('div', class_='write_div')
+    if not content_div:
+        post_text = ""
+    else:
+        # 미디어/OG 제거 + 이미지/영상 포함된 링크만 유지
         for og_tag in content_div.find_all('a', class_='og-wrap'):
             og_tag.decompose()
-        # # 내용
-        # content_tag = soup.find('div', class_='write_div')
-        # if content_tag:
-        #     content_strip = ' '.join(content_tag.text.split())
-        #     content_list.append(content_strip)
-        # else:
-        #     content_list.append('')
-
-        # <a> 태그 중 이미지가 없는 경우에만 삭제
         for a_tag in content_div.find_all('a'):
             if (
-                    not a_tag.find('img') and
-                    not a_tag.find('span', class_='scrap_img') and
-                    not a_tag.find('video') and
-                    not (a_tag.find('iframe') and 'youtube.com' in a_tag.decode_contents())
+                not a_tag.find('img') and
+                not a_tag.find('span', class_='scrap_img') and
+                not a_tag.find('video') and
+                not (a_tag.find('iframe') and 'youtube.com' in a_tag.decode_contents())
             ):
                 a_tag.decompose()
+        post_text = content_div.get_text(separator='\n', strip=True)
+        post_text = re.sub(r'http[s]?://\S+', '', post_text)
 
-        post_content = content_div.get_text(separator='\n', strip=True)
-        post_content = re.sub(r'http[s]?://\S+', '', post_content)
-        content_list.append(post_content)
+    # 날짜
+    try:
+        date_str = soup.find('span', class_='gall_date').get_text(strip=True)
+        post_date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
+    except Exception:
+        post_date = None
 
-        # 플랫폼
-        search_plt_list.append('웹페이지(dcinside)')
+    # 작성자 (닉네임 + IP)
+    try:
+        nickname = soup.find('span', class_='nickname').get_text(strip=True)
+    except Exception:
+        nickname = ""
+    ip_tag = soup.find('span', class_='ip')
+    ip_address = ip_tag.get_text(strip=True) if ip_tag else ""
+    writer = f"{nickname}{ip_address}"
 
-        # 게시물url
-        url_list.append(url)
-
-        # 검색어
-        search_word_list.append(search)
-
-        # 게시물 날짜
-        date_str = soup.find('span', class_='gall_date').text
-        date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
-        date_list.append(date)
-
-        # 채널명
-        nickname = soup.find('span', class_='nickname').get_text()
-        ip_tag = soup.find('span', class_='ip')
-        if ip_tag:
-            ip_address = ip_tag.get_text()
-        else:
-            ip_address = ''  # IP 클래스가 없는 경우
-        writer = f"{nickname}{ip_address}"
-        writer_list.append(writer)
-
-        # # 이미지/비디오/유튜브 유무 확인
-        # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
-        #     bg_images = content_div.find_all('span', class_='scrap_img')
-        #
-        #     # 2. 일반 이미지 (img 태그) 확인
-        #     images = content_div.find_all('img')
-        #
-        #     # 3. 비디오 확인 (video 태그)
-        #     videos = content_div.find_all('video')
-        #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
-        #     iframes = content_div.find_all('iframe')
-        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
-        #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
-        #     article_links = content_div.find_all('a', href=True)
-        #     link_urls = [
-        #         a['href'] for a in article_links if 'http' in a['href']
-        #     ]
-        #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
-        #     text_content = content_div.get_text()
-        #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
-        #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
-        #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
-        #         image_check_list.append('O')
-        #     else:
-        #         image_check_list.append(' ')
-        #         logging.info(f'이미지 없음: {url}')
-        # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
-        #     image_check_list.append(' ')
-
-        main_temp = pd.DataFrame({
-
-            "검색어": search_word_list,
-            "플랫폼": search_plt_list,
-            "게시물 URL": url_list,
-            "게시물 제목": title_list,
-            "게시물 내용": content_list,
-            "게시물 등록일자": date_list,
-            "계정명": writer_list,
-            # "이미지 유무": image_check_list
-        })
-
-        # 데이터 저장
-        save_to_csv(main_temp, f'csv/22.디시인사이드/{today}/디시인사이드_{search}.csv')
-        logging.info(f"저장완료: csv/22.디시인사이드/{today}/디시인사이드_{search}.csv")
-
-    except Exception as e:
-        logging.error(f"오류 발생: {e}")
-        return pd.DataFrame()
+    df = pd.DataFrame({
+        "검색어": [search],
+        "플랫폼": ['웹페이지(dcinside)'],
+        "게시물 URL": [url],
+        "게시물 제목": [cleaned_title],
+        "게시물 내용": [post_text],
+        "게시물 등록일자": [post_date],
+        "계정명": [writer],
+    })
+    return df
 
 
-def dc_main_crw(searchs, start_date, end_date,stop_event):
-    if not os.path.exists(f'csv/22.디시인사이드/{today}'):
-        os.makedirs(f'csv/22.디시인사이드/{today}')
-        print(f"폴더 생성 완료: {today}")
-    else:
-        print(f"해당 폴더 존재")
-    logging.info(f"========================================================")
-    logging.info(f"                 디시인사이드 크롤링 시작")
-    logging.info(f"========================================================")
-    wd = setup_driver()
-    wd_dp1 = setup_driver()
-    for search in searchs:
-        page_num = 1
-        if stop_event.is_set():
-            print("🛑 크롤링 중단됨")
-            break
-        while True:
+# -------------------------------
+# 3) 메인: 검색어 다건 크롤링 (안정화판)
+# -------------------------------
+def dc_main_crw(searchs, start_date, end_date, stop_event):
+    """
+    - 목록: requests / 상세: Selenium
+    - 진행상황(progress.json) 저장 → 죽어도 이어서
+    - 페이지/게시물 실패는 스킵하고 계속
+    - 키워드 배치마다 드라이버 재생성
+    """
+    out_dir = f'csv/22.디시인사이드/{today}'
+    os.makedirs(out_dir, exist_ok=True)
+
+    logging.info("=" * 56)
+    logging.info("                 디시인사이드 크롤링 시작")
+    logging.info("=" * 56)
+
+    wd_detail = setup_driver()
+    processed_keywords = 0
+
+    try:
+        for search in searchs:
             if stop_event.is_set():
+                print("🛑 크롤링 중단됨")
                 break
-            try:
-                if page_num == 121:
+
+            # 주기적 드라이버 재생성 (예: 15개마다)
+            if processed_keywords > 0 and (processed_keywords % 15) == 0:
+                try:
+                    wd_detail.quit()
+                except Exception:
+                    pass
+                wd_detail = setup_driver()
+
+            page_num = last_done_page(search, default_page=1)
+            logging.info(f"[{search}] 시작 페이지: {page_num}")
+
+            while True:
+                if stop_event.is_set():
                     break
-                url_dp1 = f'https://search.dcinside.com/post/p/{page_num}/sort/latest/q/{search}'
-                wd_dp1.get(url_dp1)
-                sleep_random_time = random.uniform(2, 4)
-                time.sleep(sleep_random_time)
-                soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
+                if page_num >= 121:  # 최대 120페이지
+                    break
 
-                # 검색결과 리스트
-                li_tags = soup_dp1.find('ul', class_='sch_result_list').find_all('li')
+                # 목록 수집
+                pairs = fetch_list_urls(search, page_num)
+                if not pairs:
+                    page_num += 1
+                    save_progress(search, page_num)
+                    continue
 
-                for li in li_tags:
+                after_start_flag = False  # 시작일 이전 글 만나면 종료
+                for post_url, post_date in pairs:
                     if stop_event.is_set():
                         break
-                    after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
-                    try:
-                        date_str = li.find('span', class_='date_time').text
-                        date = datetime.strptime(date_str, '%Y.%m.%d %H:%M').date()
-                    except Exception as e:
-                        logging.error("날짜 오류 발생: {e}")
+                    # 날짜 필터
+                    if post_date and post_date > end_date:
                         continue
-
-                    if date > end_date:
-                        # date_flag = True
-                        continue
-                    if date < start_date:
-                        after_start_date = True
+                    if post_date and post_date < start_date:
+                        after_start_flag = True
                         break
 
-                    url = li.find('a', class_='tit_txt').get('href')
-                    logging.info(f"url 찾음.")
-                    dc_crw(wd, url, search)
+                    # 상세 수집
+                    try:
+                        one = dc_crw_detail(wd_detail, post_url, search)
+                        if one is not None:
+                            save_to_csv(one, f'{out_dir}/디시인사이드_{search}.csv')
+                    except Exception as e:
+                        logging.error(f"[{search}] 상세 실패: {e}")
+                        continue
 
-                if after_start_date:
+                    human_sleep()  # 속도 제어
+
+                if after_start_flag:
                     break
-                else:
-                    page_num += 1
 
-            except Exception as e:
-                logging.error(f"오류 발생: {e}")
-                break
+                page_num += 1
+                save_progress(search, page_num)
 
-    wd.quit()
-    wd_dp1.quit()
+            processed_keywords += 1
 
+    finally:
+        try:
+            wd_detail.quit()
+        except Exception:
+            pass
+
+    # 최종 머지 (중단 시 생략)
     if not stop_event.is_set():
         result_dir = '결과/디시인사이드'
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
+        os.makedirs(result_dir, exist_ok=True)
 
-        all_data = pd.concat([
-            result_csv_data(search, platform='디시인사이드', subdir='22.디시인사이드')
-            for search in searchs
-        ])
+        frames = []
+        for search in searchs:
+            try:
+                part = result_csv_data(search, platform='디시인사이드', subdir='22.디시인사이드')
+                if part is not None and len(part) > 0:
+                    frames.append(part)
+            except Exception as e:
+                logging.error(f"[merge] {search} 병합 실패: {e}")
 
-        all_data.to_csv(f'{result_dir}/디시인사이드_raw data_{today}.csv', encoding='utf-8', index=False)
-
+        if frames:
+            all_data = pd.concat(frames, ignore_index=True)
+            all_data.to_csv(
+                f'{result_dir}/디시인사이드_raw data_{today}.csv',
+                encoding='utf-8',
+                index=False
+            )
+            logging.info(f"[merge] 저장 완료: {result_dir}/디시인사이드_raw data_{today}.csv")
+        else:
+            logging.info("[merge] 병합할 데이터가 없습니다.")
