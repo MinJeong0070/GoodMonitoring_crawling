@@ -138,7 +138,6 @@ class Copy112GUI(tk.Tk):
             # 기대 컬럼: 성명, 아이디, 비밀번호
             for col in ["성명","아이디","비밀번호"]:
                 if col not in df.columns:
-                    # 일부 파일엔 성명이 없을 수도 있으므로 보정
                     if col == "성명" and "이름" in df.columns:
                         df["성명"] = df["이름"]
                     else:
@@ -154,10 +153,8 @@ class Copy112GUI(tk.Tk):
 
     def _refresh_accounts_list(self):
         query = (self.search_var.get() or "").strip().lower()
-
         self.accounts_list.delete(0, tk.END)
         self.filtered_indices = []
-
         for idx, row in self.accounts_df.iterrows():
             name = str(row.get("성명",""))
             uid = str(row.get("아이디",""))
@@ -169,7 +166,6 @@ class Copy112GUI(tk.Tk):
             else:
                 self.accounts_list.insert(tk.END, text)
                 self.filtered_indices.append(idx)
-
         self._update_sel_count()
 
     def _update_sel_count(self):
@@ -186,7 +182,6 @@ class Copy112GUI(tk.Tk):
     # ───────────────────────── 버튼 핸들러 ───────────────────────── #
     def on_start(self):
         if self.worker and self.worker.is_alive():
-            # 재개
             if self.is_paused:
                 self.pause_event.clear()
                 self.is_paused = False
@@ -195,7 +190,6 @@ class Copy112GUI(tk.Tk):
                 messagebox.showinfo("진행 중", "이미 실행 중입니다.")
             return
 
-        # 신규 시작
         if not self._validate_inputs():
             return
 
@@ -213,6 +207,8 @@ class Copy112GUI(tk.Tk):
 
         def work():
             try:
+                # ‘신고 접수 완료’일 때만 상세 진입 허용
+                detail_flag = (status_group == "신고 접수 완료")
                 _, final_path = run_crawl(
                     selected_accounts=selected_accounts,
                     start_date=start_date,
@@ -220,7 +216,7 @@ class Copy112GUI(tk.Tk):
                     status_group=status_group,
                     excel_path=ACCOUNTS_XLSX,
                     output_dir=OUTPUT_DIR,
-                    detailed_for_done=True,
+                    detailed_for_done=detail_flag,
                     log_callback=self._log,
                     stop_event=self.stop_event,
                     pause_event=self.pause_event,
@@ -249,7 +245,7 @@ class Copy112GUI(tk.Tk):
 
     def on_stop(self):
         if not self.worker or not self.worker.is_alive():
-            self.destroy()  # 실행 중인 작업이 없으면 창 닫기
+            self.destroy()
             return
         if messagebox.askyesno("종료 확인", "현재까지 수집된 데이터를 저장하고 종료할까요?"):
             self.stop_event.set()
@@ -272,7 +268,6 @@ class Copy112GUI(tk.Tk):
                 return pd.to_datetime(x.get().strip()).date()
             except:
                 return None
-
         s = to_date(self.start_date)
         e = to_date(self.end_date)
         return s, e
@@ -302,12 +297,10 @@ class Copy112GUI(tk.Tk):
         ts = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert(tk.END, f"[{ts}] {msg}\n")
         self.log_text.see(tk.END)
-        # 너무 길어지면 앞부분 정리(최근 200줄 유지)
         if int(self.log_text.index('end-1c').split('.')[0]) > 400:
             self.log_text.delete('1.0', '200.0')
 
 if __name__ == "__main__":
-    # 출력 폴더 생성
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     app = Copy112GUI()
     app.mainloop()
