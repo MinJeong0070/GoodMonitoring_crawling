@@ -8,6 +8,10 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import time
 from datetime import datetime
+from pathlib import Path
+
+LIST_URL = "https://copy112.kcopa.or.kr/mypage/unlaw/mypageUnlawList.do"
+LOGIN_URL = "https://copy112.kcopa.or.kr/member/loginForm.do"
 
 # ──────────────────────────────
 # 리스트 테이블 파싱
@@ -24,14 +28,9 @@ def parse_table(html):
         cols = row.select("td")
         if len(cols) < 8:
             continue
-        # 사이트명/제목 셀 내 <a class="subject" title="원문URL"> 구조일 수 있으므로 보강
+        # 제목/사이트링크 보강: <a class="subject" title="원문URL"> 가능성
         a = cols[3].select_one("a.subject")
-        site_link = ""
-        if a and a.get("title"):
-            site_link = a.get("title").strip()
-        else:
-            # fallback: td 자체에 title 있는 경우
-            site_link = cols[3].get("title", "").strip()
+        site_link = a.get("title", "").strip() if (a and a.get("title")) else cols[3].get("title", "").strip()
 
         data.append({
             "순번": cols[0].get_text(strip=True),
@@ -46,13 +45,12 @@ def parse_table(html):
     return data
 
 # ──────────────────────────────
-# 상세 페이지 진입/추출 유틸
+# 상세 페이지 진입/추출
 # ──────────────────────────────
 def open_detail_from_row(driver, row_webelem):
     """
-    리스트의 해당 행에서 상세 페이지 진입.
-    1순위: 접수번호(td:nth-child(2))에 링크가 있으면 그것 클릭
-    2순위: 행 자체 클릭
+    1순위: 접수번호(td:nth-child(2)) 링크 클릭
+    2순위: tr 자체 클릭
     """
     try:
         a = row_webelem.find_element(By.CSS_SELECTOR, "td:nth-child(2) a")
@@ -70,176 +68,248 @@ def scrape_detail(driver):
     """
     상세에서 심의결과/처리내용 읽기
     - 심의결과: //th[contains(.,'심의결과')]/following-sibling::td[1]
-    - 처리내용: textarea.PROCESS_CN (disabled일 수 있어 value로 읽기)
+    - 처리내용: textarea.PROCESS_CN (disabled일 때 value로 읽기)
     """
-    # 로딩 여유
     time.sleep(0.7)
 
-    # 심의결과
-    review_result = ""
+    review_result, process_text = "", ""
     try:
         td = driver.find_element(By.XPATH, "//th[contains(.,'심의결과')]/following-sibling::td[1]")
         review_result = td.text.strip()
     except:
-        review_result = ""
-
-    # 처리내용
-    process_text = ""
+        pass
     try:
         ta = driver.find_element(By.CSS_SELECTOR, "textarea.PROCESS_CN")
         process_text = (ta.get_attribute("value") or ta.text or "").strip()
     except:
-        process_text = ""
+        pass
 
     return review_result, process_text
 
 # ──────────────────────────────
-# 계정 정보 불러오기 (엑셀: 비번 → 비밀번호 정규화)
+# 상태 그룹 매핑 (GUI 연동)
 # ──────────────────────────────
-accounts_df = pd.read_excel("../copy112_계정.xlsx")
-accounts_df = accounts_df.rename(columns={"비번": "비밀번호"})
-
-all_data = []
+STATUS_GROUPS = {
+    "전체 현황": None,  # 모든 상태 허용
+    "신고 접수 전": {"신고접수전"},
+    "신고 접수 중": {"채증 및 검증", "위원심의", "시정권고", "이행여부 확인"},
+    "신고 접수 완료": {"신고처리완료"},
+}
 
 # ──────────────────────────────
-# 계정별 반복 ('신고처리완료'건 상세조회)
+# 날짜/상태 로컬 필터
 # ──────────────────────────────
-for _, row in accounts_df.iterrows():
-    USER_ID = str(row["아이디"])
-    USER_PW = str(row["비밀번호"])
-
-    print(f"\n계정 로그인 시작: {USER_ID}")
-
-    options = Options()
-    options.add_argument("--start-maximized")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-
+def _within_period(date_text, start_date, end_date):
+    if not (start_date or end_date):
+        return True
     try:
-        # 로그인
-        driver.get("https://copy112.kcopa.or.kr/member/loginForm.do")
-        time.sleep(2)
-        driver.find_element(By.ID, "userid").send_keys(USER_ID)
-        driver.find_element(By.ID, "password").send_keys(USER_PW)
-        driver.find_element(By.CLASS_NAME, "login-btn").click()
-        time.sleep(3)
+        dt = pd.to_datetime(date_text, errors="coerce")
+        if pd.isna(dt):
+            return False
+        if start_date and dt.date() < start_date:
+            return False
+        if end_date and dt.date() > end_date:
+            return False
+        return True
+    except:
+        return False
 
-        # 신고내역 페이지 이동
-        driver.get("https://copy112.kcopa.or.kr/mypage/unlaw/mypageUnlawList.do")
-        time.sleep(2)
+def _status_in_group(status_text, group_name):
+    group = STATUS_GROUPS.get(group_name, None)
+    if group is None:
+        return True
+    return status_text in group
 
-        visited_pages = set()
-
-        while True:
-            # 현재 페이지 번호 파악
+# ──────────────────────────────
+# 핵심: run_crawl (GUI가 호출)
+# ──────────────────────────────
+def run_crawl(
+    selected_accounts,                      # [{'성명':..., '아이디':..., '비밀번호':...}, ...]
+    start_date=None, end_date=None,         # datetime.date 또는 None
+    status_group="전체 현황",               # STATUS_GROUPS의 키
+    excel_path="../copy112_계정.xlsx",      # 계정 엑셀 경로(참고 저장용)
+    output_dir=".",                         # 저장 폴더
+    detailed_for_done=True,                 # 신고처리완료 상세 진입
+    log_callback=None,                      # 로그 함수(str)->None
+    stop_event=None, pause_event=None       # threading.Event (옵션)
+):
+    """
+    반환: (pd.DataFrame, 최종저장파일경로 또는 None)
+    """
+    def log(msg):
+        if log_callback:
             try:
-                cur_el = driver.find_element(By.CSS_SELECTOR, "a.current")
-                current_page_num = int(cur_el.text.strip())
+                log_callback(msg)
             except:
-                print("현재 페이지 파악 실패")
-                break
+                pass
+        else:
+            print(msg)
 
-            # 현재 페이지 HTML 파싱
-            html = driver.page_source
-            parsed_rows = parse_table(html)
+    all_rows = []
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 상세 진입을 위해 Selenium의 tr 요소 준비
-            tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+    # 계정 반복
+    for acc in selected_accounts:
+        if stop_event and stop_event.is_set():
+            break
+        # 중지(일시정지) 처리
+        if pause_event:
+            while pause_event.is_set():
+                time.sleep(0.2)
+                if stop_event and stop_event.is_set():
+                    break
 
-            # 각 행 처리(기존 누적 + 완료건 상세조회)
-            for i, d in enumerate(parsed_rows):
-                d["계정"] = USER_ID
-                d["심의결과"] = ""
-                d["처리내용"] = ""
+        name = str(acc.get("성명", "") or "")
+        user_id = str(acc.get("아이디", "") or "")
+        user_pw = str(acc.get("비밀번호", "") or acc.get("비번", "") or "")
 
-                if d.get("처리현황") == "신고처리완료":
-                    # 상세 페이지 진입
-                    ok = open_detail_from_row(driver, tr_elems[i])
-                    if ok:
-                        rr, pt = scrape_detail(driver)
-                        d["심의결과"] = rr
-                        d["처리내용"] = pt
-                        # 리스트로 복귀
-                        driver.back()
-                        time.sleep(1.0)
-                        # 복귀 후 tr_elems가 무효화되므로 다시 잡아줌
-                        tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+        log(f"{name or user_id} 계정 크롤링 시작")
 
-                all_data.append(d)
+        options = Options()
+        options.add_argument("--start-maximized")
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-            print(f"{USER_ID} - {current_page_num}페이지 수집 완료, 누적: {len(all_data)}건")
-            visited_pages.add(current_page_num)
+        try:
+            # 로그인
+            driver.get(LOGIN_URL)
+            time.sleep(2)
+            driver.find_element(By.ID, "userid").send_keys(user_id)
+            driver.find_element(By.ID, "password").send_keys(user_pw)
+            driver.find_element(By.CLASS_NAME, "login-btn").click()
+            time.sleep(2.5)
 
-            # 페이지 순회
-            try:
-                pgnums = driver.find_elements(By.CSS_SELECTOR, "a.pgnum")
-                page_nums = [int(x.text.strip()) for x in pgnums if x.text.strip().isdigit()]
-            except:
-                page_nums = []
+            # 신고내역 이동
+            driver.get(LIST_URL)
+            time.sleep(1.8)
 
-            for pn in page_nums:
-                if pn in visited_pages:
-                    continue
+            visited_pages = set()
+
+            while True:
+                if stop_event and stop_event.is_set():
+                    break
+                if pause_event:
+                    while pause_event.is_set():
+                        time.sleep(0.2)
+                        if stop_event and stop_event.is_set():
+                            break
+
+                # 현재 페이지 번호
                 try:
-                    btn = driver.find_element(By.LINK_TEXT, str(pn))
-                    driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(1.2)
-
                     cur_el = driver.find_element(By.CSS_SELECTOR, "a.current")
                     current_page_num = int(cur_el.text.strip())
+                except:
+                    log("현재 페이지 파악 실패")
+                    break
 
-                    html = driver.page_source
-                    parsed_rows = parse_table(html)
-                    tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+                html = driver.page_source
+                parsed = parse_table(html)
+                tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
 
-                    for i, d in enumerate(parsed_rows):
-                        d["계정"] = USER_ID
-                        d["심의결과"] = ""
-                        d["처리내용"] = ""
+                # 행 처리
+                for i, d in enumerate(parsed):
+                    if stop_event and stop_event.is_set():
+                        break
+                    if pause_event:
+                        while pause_event.is_set():
+                            time.sleep(0.2)
+                            if stop_event and stop_event.is_set():
+                                break
 
-                        if d.get("처리현황") == "신고처리완료":
-                            ok = open_detail_from_row(driver, tr_elems[i])
-                            if ok:
-                                rr, pt = scrape_detail(driver)
-                                d["심의결과"] = rr
-                                d["처리내용"] = pt
-                                driver.back()
-                                time.sleep(1.0)
-                                tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+                    d["계정"] = user_id
+                    d["성명"] = name
+                    d["심의결과"] = ""
+                    d["처리내용"] = ""
 
-                        all_data.append(d)
+                    # 로컬 필터(기간/상태)
+                    if not _within_period(d.get("신고일자", ""), start_date, end_date):
+                        continue
+                    if not _status_in_group(d.get("처리현황", ""), status_group):
+                        continue
 
-                    print(f"{USER_ID} - {current_page_num}페이지 수집 완료, 누적: {len(all_data)}건")
-                    visited_pages.add(current_page_num)
+                    # 완료건 상세 진입
+                    if detailed_for_done and d.get("처리현황") == "신고처리완료":
+                        ok = open_detail_from_row(driver, tr_elems[i])
+                        if ok:
+                            rr, pt = scrape_detail(driver)
+                            d["심의결과"] = rr
+                            d["처리내용"] = pt
+                            driver.back()
+                            time.sleep(0.8)
+                            tr_elems = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
 
-                except Exception as e:
-                    print(f"{pn}페이지 이동 실패: {e}")
+                    all_rows.append(d)
+
+                visited_pages.add(current_page_num)
+                log(f"{name or user_id} - {current_page_num}페이지 수집 완료, 누적 {len(all_rows)}건")
+
+                # 페이지 번호들 이동
+                try:
+                    pgnums = driver.find_elements(By.CSS_SELECTOR, "a.pgnum")
+                    page_nums = [int(x.text.strip()) for x in pgnums if x.text.strip().isdigit()]
+                except:
+                    page_nums = []
+
+                progressed = False
+                for pn in page_nums:
+                    if pn in visited_pages:
+                        continue
+                    try:
+                        btn = driver.find_element(By.LINK_TEXT, str(pn))
+                        driver.execute_script("arguments[0].click();", btn)
+                        time.sleep(1.0)
+                        progressed = True
+                        break
+                    except Exception as e:
+                        log(f"{pn}페이지 이동 실패: {e}")
+                        continue
+
+                if progressed:
                     continue
 
-            # Next 버튼 처리
-            try:
-                next_btn = driver.find_element(By.CSS_SELECTOR, "a.page.next")
-                prev_num = current_page_num
-                driver.execute_script("arguments[0].click();", next_btn)
-                time.sleep(1.2)
-                new_num_el = driver.find_element(By.CSS_SELECTOR, "a.current")
-                new_num = int(new_num_el.text.strip())
-                if new_num == prev_num:
-                    print(f"{USER_ID} - 마지막 페이지 도달. 종료.")
+                # Next
+                try:
+                    next_btn = driver.find_element(By.CSS_SELECTOR, "a.page.next")
+                    prev_num = current_page_num
+                    driver.execute_script("arguments[0].click();", next_btn)
+                    time.sleep(1.0)
+                    new_num_el = driver.find_element(By.CSS_SELECTOR, "a.current")
+                    new_num = int(new_num_el.text.strip())
+                    if new_num == prev_num:
+                        log(f"{name or user_id} - 마지막 페이지.")
+                        break
+                except:
+                    log(f"{name or user_id} - 다음 버튼 없음.")
                     break
-            except:
-                print(f"{USER_ID} - 다음 버튼 없음. 종료.")
-                break
 
-    finally:
-        driver.quit()
+            # 계정 단위 부분 저장(안전)
+            df_acc = pd.DataFrame(all_rows)
+            acc_safe = (name or user_id or "account").replace("/", "_")
+            part_path = output_dir / f"신고내역_부분저장_{acc_safe}_{ts}.xlsx"
+            df_acc.to_excel(part_path, index=False)
+            log(f"{name or user_id} 계정 저장 완료: {part_path.name}")
 
-# ──────────────────────────────
-# 저장('신고처리완료'건 상세 내용 포함)
-# ──────────────────────────────
-df = pd.DataFrame(all_data, columns=[
-    "계정","순번","접수번호","신고유형","사이트링크","저작물명","서버위치","처리현황","신고일자",
-    "심의결과","처리내용"
-])
-outfile = f"신고내역_전체_{datetime.now().strftime('%Y%m%d')}.xlsx"
-df.to_excel(outfile, index=False)
-print(f"\n모든 계정 수집 완료. 저장 파일: {outfile}  (총 {len(df)}건)")
+        except Exception as e:
+            log(f"{name or user_id} 계정 오류: {e}")
+        finally:
+            driver.quit()
+            log(f"{name or user_id} 계정 크롤링 종료")
+
+        if stop_event and stop_event.is_set():
+            break
+
+    # 최종 저장
+    df = pd.DataFrame(all_rows, columns=[
+        "계정","성명","순번","접수번호","신고유형","사이트링크","저작물명","서버위치","처리현황","신고일자",
+        "심의결과","처리내용"
+    ])
+    final_path = None
+    try:
+        final_path = output_dir / f"신고내역_전체_{ts}.xlsx"
+        df.to_excel(final_path, index=False)
+        log(f"전체 저장 완료: {final_path.name} (총 {len(df)}건)")
+    except Exception as e:
+        log(f"최종 저장 실패: {e}")
+
+    return df, (str(final_path) if final_path else None)
