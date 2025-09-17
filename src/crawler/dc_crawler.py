@@ -1,16 +1,17 @@
 import os
 import re
-import time
-import random
 import logging
-import requests
 import pandas as pd
+from datetime import datetime
 from bs4 import BeautifulSoup
+from typing import List, Tuple, Optional
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
-from datetime import datetime
 
 # utils.py 하나에서 모두 가져오도록 통합
 from src.etc.utils import (
@@ -29,7 +30,7 @@ today = datetime.now().strftime("%y%m%d")
 os.makedirs('log', exist_ok=True)
 
 logging.basicConfig(
-    filename=f'디시인사이드_log_{today}.txt',
+    filename=os.path.join('log', f'디시인사이드_log_{today}.txt'),
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     encoding='utf-8'
@@ -42,45 +43,63 @@ UA = (
 )
 
 # -------------------------------
+# requests 세션 풀(속도↑, 재시도 일원화)
+# -------------------------------
+def make_session() -> requests.Session:
+    s = requests.Session()
+    retries = Retry(
+        total=3, backoff_factor=0.6,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"])
+    )
+    adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100, max_retries=retries)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
+    s.headers.update({"User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8"})
+    return s
+
+SESSION = make_session()
+
+# -------------------------------
 # 1) 목록(검색 결과) 수집: requests + BS
 # -------------------------------
-def fetch_list_urls(search: str, page: int):
+def fetch_list_urls(search: str, page: int, session: requests.Session = SESSION) -> List[Tuple[str, Optional[datetime.date]]]:
     """
-    검색결과 목록 수집 (requests + BeautifulSoup)
+    검색결과 목록 수집
     반환: [(post_url, post_date), ...]
     """
     url = f'https://search.dcinside.com/post/p/{page}/sort/latest/q/{search}'
     try:
-        r = requests.get(url, timeout=12, headers={"User-Agent": UA})
+        r = session.get(url, timeout=12)
         r.raise_for_status()
     except Exception as e:
         logging.warning(f"[fetch_list_urls] 요청 실패 p{page} {search}: {e}")
         return []
 
-    soup = BeautifulSoup(r.text, 'html.parser')
+    soup = BeautifulSoup(r.text, 'lxml')  # 파서 가속
     ul = soup.find('ul', class_='sch_result_list')
     if not ul:
         logging.info(f"[fetch_list_urls] 결과 리스트 없음 p{page} {search}")
         return []
 
-    out = []
-    for li in ul.find_all('li'):
-        try:
-            date_str = li.find('span', class_='date_time').get_text(strip=True)
-            date = datetime.strptime(date_str, '%Y.%m.%d %H:%M').date()
-            a = li.find('a', class_='tit_txt')
-            href = a.get('href') if a else None
-            if href:
-                out.append((href, date))
-        except Exception:
+    out: List[Tuple[str, Optional[datetime.date]]] = []
+    for li in ul.select('li'):
+        date_el = li.select_one('span.date_time')
+        a = li.select_one('a.tit_txt')
+        if not (date_el and a and a.get('href')):
             continue
+        try:
+            date = datetime.strptime(date_el.get_text(strip=True), '%Y.%m.%d %H:%M').date()
+        except Exception:
+            date = None
+        out.append((a['href'], date))
     return out
 
 
 # -------------------------------
 # 2) 상세 게시물 수집: Selenium (+ safe_get)
 # -------------------------------
-def dc_crw_detail(wd, url: str, search: str):
+def dc_crw_detail(wd, url: str, search: str) -> Optional[pd.DataFrame]:
     """
     단일 게시물 상세 크롤링 (안전접속 + 요소 미노출 시 스킵)
     성공 시 DataFrame(1행), 실패/스킵 시 None
@@ -91,33 +110,29 @@ def dc_crw_detail(wd, url: str, search: str):
         return None
 
     try:
-        WebDriverWait(wd, 12).until(
+        WebDriverWait(wd, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".view_content_wrap"))
         )
     except TimeoutException:
         logging.warning(f"[detail] 본문 래퍼 미노출: {url}")
         return None
 
-    soup = BeautifulSoup(wd.page_source, 'html.parser')
+    soup = BeautifulSoup(wd.page_source, 'lxml')  # lxml
 
     # 제목
-    title_tag = soup.find('h3', class_='title ub-word')
-    if title_tag:
-        ts = title_tag.find('span', class_='title_subject')
-        raw_title = ts.get_text(strip=True) if ts else ""
-    else:
-        raw_title = ""
+    ts = soup.select_one('h3.title.ub-word span.title_subject')
+    raw_title = ts.get_text(strip=True) if ts else ""
     cleaned_title = clean_title(raw_title)
 
     # 본문
-    content_div = soup.find('div', class_='write_div')
+    content_div = soup.select_one('div.write_div')
     if not content_div:
         post_text = ""
     else:
-        # 미디어/OG 제거 + 이미지/영상 포함된 링크만 유지
-        for og_tag in content_div.find_all('a', class_='og-wrap'):
+        # OG/광고 블록 제거, 텍스트만 취득
+        for og_tag in content_div.select('a.og-wrap'):
             og_tag.decompose()
-        for a_tag in content_div.find_all('a'):
+        for a_tag in content_div.select('a'):
             if (
                 not a_tag.find('img') and
                 not a_tag.find('span', class_='scrap_img') and
@@ -130,18 +145,18 @@ def dc_crw_detail(wd, url: str, search: str):
 
     # 날짜
     try:
-        date_str = soup.find('span', class_='gall_date').get_text(strip=True)
+        date_str = soup.select_one('span.gall_date').get_text(strip=True)
         post_date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
     except Exception:
         post_date = None
 
     # 작성자 (닉네임 + IP)
-    try:
-        nickname = soup.find('span', class_='nickname').get_text(strip=True)
-    except Exception:
-        nickname = ""
-    ip_tag = soup.find('span', class_='ip')
-    ip_address = ip_tag.get_text(strip=True) if ip_tag else ""
+    nickname = ""
+    nick_el = soup.select_one('span.nickname')
+    if nick_el:
+        nickname = nick_el.get_text(strip=True)
+    ip_el = soup.select_one('span.ip')
+    ip_address = ip_el.get_text(strip=True) if ip_el else ""
     writer = f"{nickname}{ip_address}"
 
     df = pd.DataFrame({
@@ -165,6 +180,7 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
     - 진행상황(progress.json) 저장 → 죽어도 이어서
     - 페이지/게시물 실패는 스킵하고 계속
     - 키워드 배치마다 드라이버 재생성
+    - per-post 대기 제거, 페이지 끝에서만 소량 지터
     """
     out_dir = f'csv/22.디시인사이드/{today}'
     os.makedirs(out_dir, exist_ok=True)
@@ -175,6 +191,7 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
 
     wd_detail = setup_driver()
     processed_keywords = 0
+    err_streak = 0
 
     try:
         for search in searchs:
@@ -182,8 +199,17 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                 print("🛑 크롤링 중단됨")
                 break
 
-            # 주기적 드라이버 재생성 (예: 15개마다)
-            if processed_keywords > 0 and (processed_keywords % 15) == 0:
+            # 누적 에러가 많을 때만 재생성(내구성↑)
+            if err_streak >= 10:
+                try:
+                    wd_detail.quit()
+                except Exception:
+                    pass
+                wd_detail = setup_driver()
+                err_streak = 0
+
+            # 주기적 재생성(보수적): 20개 키워드마다
+            if processed_keywords > 0 and (processed_keywords % 20) == 0:
                 try:
                     wd_detail.quit()
                 except Exception:
@@ -200,13 +226,16 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                     break
 
                 # 목록 수집
-                pairs = fetch_list_urls(search, page_num)
+                pairs = fetch_list_urls(search, page_num, SESSION)
                 if not pairs:
                     page_num += 1
                     save_progress(search, page_num)
+                    human_sleep(0.2, 0.6)  # 페이지 단위 소량 지터
                     continue
 
                 after_start_flag = False  # 시작일 이전 글 만나면 종료
+                batch_saved = 0
+
                 for post_url, post_date in pairs:
                     if stop_event.is_set():
                         break
@@ -223,17 +252,21 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                         one = dc_crw_detail(wd_detail, post_url, search)
                         if one is not None:
                             save_to_csv(one, f'{out_dir}/디시인사이드_{search}.csv')
+                            batch_saved += 1
+                            err_streak = 0
                     except Exception as e:
-                        logging.error(f"[{search}] 상세 실패: {e}")
+                        err_streak += 1
+                        logging.error(f"[{search}] 상세 실패({err_streak}): {e}")
                         continue
-
-                    human_sleep()  # 속도 제어
 
                 if after_start_flag:
                     break
 
                 page_num += 1
                 save_progress(search, page_num)
+
+                # per-post sleep 제거, 페이지 종료 시만 휴식
+                human_sleep(0.2, 0.6)
 
             processed_keywords += 1
 
@@ -243,7 +276,7 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
         except Exception:
             pass
 
-    # 최종 머지 (중단 시 생략)
+    # 최종 병합 (중단 시 생략)
     if not stop_event.is_set():
         result_dir = '결과/디시인사이드'
         os.makedirs(result_dir, exist_ok=True)
