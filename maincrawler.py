@@ -34,6 +34,7 @@ from src.crawler.dq_crawler import dq_main_crw
 from src.crawler.ygosu_crawler import ygosu_main_crw
 from src.crawler.etoland_crawler import etoland_main_crw
 from src.crawler.serieamania_crawler import serieamania_main_crw
+from src.crawler.fb_crawler import fb_main_crw
 # from src.crawler.kbdio_crawler import kbdio_main_crw
 # from src.crawler.kbdiom_crawler import kbdiom_main_crw
 from src.processing.process_file import process_file
@@ -78,7 +79,8 @@ crawlers = {
     "더쿠":dq_main_crw,
     "와이고수":ygosu_main_crw,
     "이토랜드":etoland_main_crw,
-    "세리에매니아":serieamania_main_crw
+    "세리에매니아":serieamania_main_crw,
+    "페이스북":fb_main_crw
     # "케이비디오":kbdio_main_crw,
     # "티스토리 케이비디오":kbdiom_main_crw
 

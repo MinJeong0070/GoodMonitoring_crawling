@@ -1,0 +1,185 @@
+"""
+페이스북 게시글 수집기 (Google 검색 기반)
+- 구글 검색 쿼리: site:facebook.com "키워드" after:YYYY-MM-DD before:YYYY-MM-DD
+- 게시글 URL만 수집 (정규식 기반 필터)
+- CAPTCHA(자동화 감지) 화면 대기 → 수동 해제 후 재개 가능
+- undetected_chromedriver 사용 (자동 동의창 처리)
+- 키워드별 CSV, 합본 CSV 저장 + 콘솔 로그 출력
+- inurl 제외 조건 제거됨 → 키워드에 맞게 도메인 유연하게 수집
+"""
+
+import os
+import re
+import csv
+import time
+import random
+import urllib.parse
+from datetime import datetime, date
+from typing import List, Dict
+from urllib.parse import urlparse, parse_qs
+
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# ======================== 설정 =========================
+HEADERS = ["게시물 URL", "게시물 제목", "게시물 내용", "게시물 등록일자", "계정명", "검색어"]
+POST_PATTERNS = [
+    r"/posts/\\d+",
+    r"/posts/pfbid\\w+",
+    r"/permalink/\\d+",
+    r"/groups/\\d+/posts/\\d+",
+    r"/photo\\.php",
+    r"/videos/\\d+",
+    r"story_fbid",
+    r"fbid"
+]
+SITE_DIR = os.path.join("결과", "페이스북")
+
+# ================ 유틸 함수 ===================
+def sleep_rand(a=3.0, b=6.0):
+    time.sleep(random.uniform(a, b))
+
+def clean_url(href: str) -> str:
+    try:
+        u = urllib.parse.urlsplit(href)
+        q = parse_qs(u.query)
+        for k in list(q):
+            if k.startswith("utm") or k in ("refsrc", "mibextid", "_fb_noscript"):
+                q.pop(k, None)
+        new_q = urllib.parse.urlencode({k: v[0] for k, v in q.items()})
+        return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path, new_q, ""))
+    except:
+        return href
+
+def is_post_url(href: str) -> bool:
+    parsed = urlparse(href)
+    if "facebook.com" not in parsed.netloc:
+        return False
+    path = parsed.path
+    if any(re.search(p, path) for p in POST_PATTERNS):
+        return True
+    q = parse_qs(parsed.query)
+    return any(k in q for k in ("story_fbid", "fbid"))
+
+def build_query(keyword: str, start_d: date, end_d: date) -> str:
+    q = [f'site:facebook.com "{keyword}"', f"after:{start_d.isoformat()}", f"before:{end_d.isoformat()}"]
+    return " ".join(q)
+
+def build_url(query: str, start: int, start_d: date, end_d: date) -> str:
+    params = {
+        "q": query,
+        "start": str(start),
+        "num": "10",
+        "hl": "ko",
+        "lr": "lang_ko",
+        "tbs": f"cdr:1,cd_min:{start_d.strftime('%m/%d/%Y')},cd_max:{end_d.strftime('%m/%d/%Y')}"
+    }
+    return "https://www.google.com/search?" + urllib.parse.urlencode(params)
+
+def click_consent(driver):
+    if "consent.google.com" not in driver.current_url:
+        return
+    try:
+        driver.find_element(By.XPATH, "//button[contains(text(),'동의')]").click()
+        sleep_rand()
+        print("[GOOGLE] 동의창 자동 클릭 완료")
+    except:
+        print("[GOOGLE] 동의창 자동 클릭 실패 - 수동 클릭 요망")
+
+def wait_if_captcha(driver):
+    if "sorry/index" in driver.current_url or "captcha" in driver.page_source.lower():
+        print("[CAPTCHA] 감지됨 - 수동으로 캡챠를 해제해 주세요 (브라우저 창에서 직접 클릭 후 대기)")
+        while "sorry/index" in driver.current_url or "captcha" in driver.page_source.lower():
+            time.sleep(3)
+        print("[CAPTCHA] 해제됨 - 크롤링 재개")
+
+def extract(driver, keyword: str, start_d: date, end_d: date) -> List[Dict[str, str]]:
+    results = []
+    try:
+        blocks = driver.find_elements(By.CSS_SELECTOR, "div.g, div.MjjYud")
+        for block in blocks:
+            try:
+                a = block.find_element(By.CSS_SELECTOR, "a")
+                href = a.get_attribute("href")
+                title = a.text.strip()
+                snippet = block.text.strip()
+
+                if not href:
+                    continue
+
+                if not is_post_url(href):
+                    continue
+
+                results.append({
+                    "게시물 URL": clean_url(href),
+                    "게시물 제목": title,
+                    "게시물 내용": snippet,
+                    "게시물 등록일자": "",
+                    "계정명": "",
+                    "검색어": keyword
+                })
+            except:
+                continue
+    except Exception as e:
+        print(f"[ERROR] 추출 실패: {e}")
+    return results
+
+def save_csv(path: str, rows: List[Dict[str, str]]):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=HEADERS)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"[SAVE] {len(rows)}건 저장됨 → {path}")
+
+# ==================== 메인 =====================
+def fb_main_crw(searchs, start_d, end_d, stop_event):
+    max_pages = 8  # 고정값으로 설정
+    profile_dir = os.getenv("GOOGLE_CHROME_PROFILE_DIR", None)
+
+    options = uc.ChromeOptions()
+    if profile_dir:
+        options.add_argument(f"--user-data-dir={profile_dir}")
+    options.add_argument("--lang=ko-KR")
+    driver = uc.Chrome(options=options)
+
+    all_rows = []
+    now = datetime.now().strftime('%y%m%d')
+    print(f"[GOOGLE] 기간: {start_d} ~ {end_d} / 키워드 수: {len(searchs)}")
+
+    for idx, keyword in enumerate(searchs, 1):
+        if stop_event.is_set(): break
+        seen = set()
+        collected = []
+        query = build_query(keyword, start_d, end_d)
+        print(f"[GOOGLE] keyword[{idx}/{len(searchs)}]='{keyword}' → {query}")
+
+        for i in range(max_pages):
+            url = build_url(query, i * 10, start_d, end_d)
+            print(f"  - p{i+1} 요청: {url}")
+            driver.get(url)
+            wait_if_captcha(driver)
+            time.sleep(2.5)
+            click_consent(driver)
+            rows = extract(driver, keyword, start_d, end_d)
+            new_count = 0
+            for r in rows:
+                if r["게시물 URL"] not in seen:
+                    seen.add(r["게시물 URL"])
+                    collected.append(r)
+                    all_rows.append(r)
+                    new_count += 1
+            print(f"    - p{i+1} 추가: {new_count}건 (누적 {len(collected)})")
+            if not rows: break
+            sleep_rand()
+
+        out_path = os.path.join(SITE_DIR, f"페이스북_raw data_{keyword}_{now}.csv")
+        save_csv(out_path, collected)
+
+    final_path = os.path.join(SITE_DIR, f"페이스북_raw data_{now}.csv")
+    save_csv(final_path, all_rows)
+    print(f"[GOOGLE] 합본 저장 완료: {len(all_rows)}건 → {final_path}")
+    driver.quit()
+    return final_path
