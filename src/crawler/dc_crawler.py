@@ -126,13 +126,16 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
     dm = DriverManager()
     processed_keywords, err_streak = 0, 0
 
+    pages_since_restart = 0
+    empty_pages_streak = 0
+
     try:
         for search in searchs:
             if stop_event.is_set(): print("🛑 크롤링 중단됨"); break
 
-            # 보수적 주기 교체(20개 키워드마다)
+            # (선택) 키워드 주기 재시작은 유지
             if processed_keywords > 0 and (processed_keywords % 20) == 0:
-                dm.restart()
+                dm.restart(); pages_since_restart = 0; empty_pages_streak = 0
 
             page_num = last_done_page(search, default_page=1)
             logging.info(f"[{search}] 시작 페이지: {page_num}")
@@ -142,9 +145,26 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                 if page_num >= 121: break
 
                 pairs = fetch_list_urls(search, page_num, SESSION)
+
+                # ✅ 결과 없음 → 연속 없음 카운터 증가
                 if not pairs:
-                    page_num += 1; save_progress(search, page_num)
-                    human_sleep(0.2, 0.6); continue
+                    empty_pages_streak += 1
+                    # 3페이지 연속 비어있으면 세션 재시작(파서/세션 꼬임 대비)
+                    if empty_pages_streak >= 3:
+                        logging.warning("[main] 3페이지 연속 결과 없음 → 드라이버 재시작")
+                        dm.restart()
+                        empty_pages_streak = 0
+                    page_num += 1
+                    save_progress(search, page_num)
+                    human_sleep(0.2, 0.6)
+                    pages_since_restart += 1
+                    # ✅ 10페이지마다 강제 재시작
+                    if pages_since_restart >= 10:
+                        dm.restart(); pages_since_restart = 0
+                    continue
+
+                # 정상 결과면 streak 초기화
+                empty_pages_streak = 0
 
                 after_start_flag = False
                 batch_saved = 0
@@ -163,15 +183,28 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                     except WebDriverException as e:
                         err_streak += 1
                         logging.error(f"[{search}] 상세 실패({err_streak}): {e}")
-                        # 세션/DevTools 신호면 즉시 교체
-                        if any(sig in str(e).lower() for sig in ("invalid session id","chrome not reachable","target closed","httpconnectionpool","read timed out","devtoolsactiveport")):
+                        # ✅ 세션/DevTools 관련이면 즉시 교체
+                        if any(sig in str(e).lower() for sig in (
+                            "invalid session id","chrome not reachable","target closed",
+                            "not connected to devtools","httpconnectionpool","read timed out",
+                            "winerror 10061","devtoolsactiveport","net::err_connection_reset"
+                        )):
                             dm.restart()
+                        continue
+                    except Exception as e:
+                        # 기타 예외도 로그만 남기고 계속
+                        logging.error(f"[{search}] 상세 기타 예외: {e}")
                         continue
 
                 if after_start_flag: break
 
-                page_num += 1; save_progress(search, page_num)
-                human_sleep(0.2, 0.6)  # 페이지 단위 지터
+                page_num += 1
+                save_progress(search, page_num)
+                human_sleep(0.2, 0.6)
+
+                pages_since_restart += 1
+                if pages_since_restart >= 10:   # ✅ 10페이지마다 강제 재시작
+                    dm.restart(); pages_since_restart = 0
 
             processed_keywords += 1
 

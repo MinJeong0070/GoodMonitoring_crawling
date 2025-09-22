@@ -31,11 +31,12 @@ def setup_driver():
     options.add_argument("--disable-dev-shm-usage")
     # options.add_argument("--headless=new")  # 필요 시
 
-    driver = uc.Chrome(options=options, enable_cdp_events=True, incognito=True)
+    # ✅ CDP 이벤트 스트림 비활성(uc 기본값 True면 버퍼가 쌓일 수 있음)
+    driver = uc.Chrome(options=options, enable_cdp_events=False, incognito=True)
     driver.set_page_load_timeout(20)
     driver.set_script_timeout(20)
 
-    # CDP: 불필요 리소스 차단
+    # 🔒 불필요 리소스 차단은 유지
     try:
         driver.execute_cdp_cmd("Network.enable", {})
         driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": [
@@ -55,11 +56,16 @@ def setup_driver():
 # ---------------------------
 _RECOVER_SIGNALS = (
     "invalid session id",
+    "no such window",
     "chrome not reachable",
     "target closed",
-    "httpconnectionpool",        # DevTools 파이프(로컬포트) 오류
-    "read timed out",
+    "not connected to devtools",
     "devtoolsactiveport",
+    "httpconnectionpool",        # Read timed out 포함
+    "read timed out",
+    "winerror 10061",
+    "net::err_connection_reset",
+    "retrying connection",
 )
 
 class DriverManager:
@@ -101,9 +107,6 @@ class DriverManager:
         return any(sig in s for sig in _RECOVER_SIGNALS)
 
     def get(self, url: str, retries: int = 2, backoff: float = 1.0) -> bool:
-        """
-        안전 네비게이션: 세션/DevTools 오류 시 즉시 재생성 후 재시도
-        """
         for attempt in range(retries + 1):
             self.ensure_alive()
             try:
@@ -111,21 +114,17 @@ class DriverManager:
                 _accept_alert_if_present(self.driver, timeout=0.8)
                 return True
             except (InvalidSessionIdException, NoSuchWindowException) as e:
-                logging.warning(f"[DriverManager] 세션 소실 감지 → 재생성 (attempt {attempt+1})")
+                logging.warning(f"[DriverManager] 세션 소실 → 재생성 (attempt {attempt+1})")
                 self.restart()
             except TimeoutException:
-                try:
-                    self.driver.execute_script("window.stop();")
-                except Exception:
-                    pass
+                try: self.driver.execute_script("window.stop();")
+                except Exception: pass
                 logging.warning("[DriverManager] Timeout → 백오프 재시도")
             except WebDriverException as e:
-                # DevTools 로컬포트 read timeout/HTTPConnectionPool 포함
                 if self._is_recoverable(e):
                     logging.warning(f"[DriverManager] 복구 신호 감지 → 재생성 (attempt {attempt+1}) : {e}")
                     self.restart()
                 else:
-                    # 알럿 가능성 우선 처리
                     if _accept_alert_if_present(self.driver, timeout=1.2):
                         try:
                             self.driver.get(url)
@@ -133,6 +132,13 @@ class DriverManager:
                         except Exception:
                             pass
                     logging.warning(f"[DriverManager] WebDriverException: {e} → 재시도")
+            except Exception as e:
+                # ✅ 예기치 못한 예외에도 복구 신호 포함 여부 점검
+                if self._is_recoverable(e):
+                    logging.warning(f"[DriverManager] (generic) 복구 신호 감지 → 재생성 : {e}")
+                    self.restart()
+                else:
+                    logging.warning(f"[DriverManager] 기타 예외: {e} → 재시도")
             time.sleep(backoff * (2 ** attempt) + random.uniform(0, 0.5))
         logging.error(f"[DriverManager] GET 실패: {url}")
         return False
