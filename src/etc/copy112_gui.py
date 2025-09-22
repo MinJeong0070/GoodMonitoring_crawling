@@ -8,15 +8,14 @@ import os
 from datetime import datetime, date
 from pathlib import Path
 
-# tkcalendar가 없어도 실행되도록 폴백 처리
+# tkcalendar가 없어도 실행되도록 폴백
 try:
-    from tkcalendar import DateEntry  # 선택 사항
+    from tkcalendar import DateEntry
 except ImportError:
     DateEntry = None
 
 from copy112_crawler import run_crawl, STATUS_GROUPS
 
-# === 경로 설정 (같은 폴더 기준 권장) ===
 ACCOUNTS_XLSX = "copy112_계정.xlsx"
 OUTPUT_DIR = "output"
 
@@ -32,14 +31,14 @@ class CrawlerGUI:
         self.pause_event = threading.Event()
         self.is_paused = False
 
-        # UI 생성 & 계정 로드
+        # UI
         self._build_filters()
         self._build_accounts_panel()
         self._build_controls()
         self._build_log()
         self.load_accounts()
 
-    # ── UI: 필터 영역 ─────────────────────────────────────────────
+    # ── 필터 영역 ─────────────────────────────────────────────
     def _build_filters(self):
         frm = ttk.LabelFrame(self.root, text="필터")
         frm.pack(fill="x", padx=10, pady=8)
@@ -55,22 +54,22 @@ class CrawlerGUI:
         ttk.Label(frm, text="처리현황").grid(row=0, column=4, padx=6, pady=6, sticky="w")
         self.status_var = tk.StringVar(value="전체 현황")
         self.cmb_status = ttk.Combobox(
-            frm, textvariable=self.status_var, values=list(STATUS_GROUPS.keys()),
-            state="readonly", width=20
+            frm,
+            textvariable=self.status_var,
+            values=list(STATUS_GROUPS.keys()),
+            state="readonly",
+            width=20,
         )
         self.cmb_status.grid(row=0, column=5, padx=6, pady=6)
 
     def _build_date_widget(self, parent):
         if DateEntry is not None:
-            # tkcalendar 설치된 환경: 달력 위젯 사용
             return DateEntry(parent, date_pattern="yyyy-mm-dd", width=12)
-        # 폴백: 일반 Entry (오늘 날짜 기본값)
         e = ttk.Entry(parent, width=14)
         e.insert(0, date.today().strftime("%Y-%m-%d"))
         return e
 
     def _get_date_value(self, widget):
-        # DateEntry면 .get_date(), Entry면 문자열 파싱
         try:
             if (DateEntry is not None) and isinstance(widget, DateEntry):
                 return widget.get_date()
@@ -81,7 +80,7 @@ class CrawlerGUI:
         except Exception:
             return None
 
-    # ── UI: 계정 영역 ─────────────────────────────────────────────
+    # ── 계정 선택 영역 ─────────────────────────────────────────
     def _build_accounts_panel(self):
         frm = ttk.LabelFrame(self.root, text="계정 선택")
         frm.pack(fill="both", padx=10, pady=6, expand=True)
@@ -112,7 +111,7 @@ class CrawlerGUI:
         self.sel_count_lbl.pack(anchor="e")
         self.lst_accounts.bind("<<ListboxSelect>>", lambda e: self._update_sel_count())
 
-    # ── UI: 실행 버튼/로그 ────────────────────────────────────────
+    # ── 실행/일시정지/종료 버튼 ─────────────────────────────────
     def _build_controls(self):
         frm = ttk.Frame(self.root)
         frm.pack(fill="x", padx=10, pady=6)
@@ -126,7 +125,7 @@ class CrawlerGUI:
         self.txt_log = ScrolledText(frm, height=12)
         self.txt_log.pack(fill="both", expand=True)
 
-    # ── 계정 로딩/검색/선택 ───────────────────────────────────────
+    # ── 계정 로딩/검색/선택 ─────────────────────────────────────
     def load_accounts(self):
         self.lst_accounts.delete(0, tk.END)
         if not os.path.exists(ACCOUNTS_XLSX):
@@ -140,7 +139,6 @@ class CrawlerGUI:
             self.accounts = []
             return
 
-        # 기대 컬럼 보정
         for col in ["성명", "아이디", "비밀번호"]:
             if col not in df.columns:
                 if col == "성명" and "이름" in df.columns:
@@ -173,7 +171,7 @@ class CrawlerGUI:
     def _update_sel_count(self):
         self.sel_count_lbl.config(text=f"선택 {len(self.lst_accounts.curselection())}명")
 
-    # ── 실행/일시정지/종료 ─────────────────────────────────────────
+    # ── 실행/일시정지/종료 ─────────────────────────────────────
     def start_crawl(self):
         self.stop_event.clear()
         self.pause_event.clear()
