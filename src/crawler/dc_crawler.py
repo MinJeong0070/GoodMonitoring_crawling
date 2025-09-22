@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from src.etc.utils import (
-    DriverManager,     # ✅ NEW
+    DriverManager,
     save_to_csv, clean_title, result_csv_data,
     human_sleep, last_done_page, save_progress
 )
@@ -72,7 +72,6 @@ def fetch_list_urls(search: str, page: int, session: requests.Session = SESSION)
 # 상세
 # -------------------------------
 def dc_crw_detail(dm: DriverManager, url: str, search: str) -> Optional[pd.DataFrame]:
-    # DriverManager.get()은 세션 유실 자동 복구 + 재시도 포함
     if not dm.get(url, retries=2, backoff=1.0):
         logging.warning(f"[detail] get 실패: {url}")
         return None
@@ -164,8 +163,8 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                     except WebDriverException as e:
                         err_streak += 1
                         logging.error(f"[{search}] 상세 실패({err_streak}): {e}")
-                        # 세션 관련 에러 신호면 즉시 재시도 위해 드라이버 교체
-                        if any(sig in str(e).lower() for sig in ["invalid session id", "chrome not reachable", "target closed"]):
+                        # 세션/DevTools 신호면 즉시 교체
+                        if any(sig in str(e).lower() for sig in ("invalid session id","chrome not reachable","target closed","httpconnectionpool","read timed out","devtoolsactiveport")):
                             dm.restart()
                         continue
 

@@ -26,10 +26,10 @@ def setup_driver():
     options.add_argument(f"user-agent={ua}")
     options.page_load_strategy = 'eager'   # DOMContentLoaded 기준
     options.add_argument('--disable-popup-blocking')
-    options.add_argument("--blink-settings=imagesEnabled=false")
+    options.add_argument("--blink-settings=imagesEnabled=false")  # 이미지 비활성
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # options.add_argument("--headless=new")  # 필요시 활성
+    # options.add_argument("--headless=new")  # 필요 시
 
     driver = uc.Chrome(options=options, enable_cdp_events=True, incognito=True)
     driver.set_page_load_timeout(20)
@@ -53,20 +53,28 @@ def setup_driver():
 # ---------------------------
 # 드라이버 매니저(자동 복구 핵심)
 # ---------------------------
+_RECOVER_SIGNALS = (
+    "invalid session id",
+    "chrome not reachable",
+    "target closed",
+    "httpconnectionpool",        # DevTools 파이프(로컬포트) 오류
+    "read timed out",
+    "devtoolsactiveport",
+)
+
 class DriverManager:
     """
-    - 세션 유실/창 닫힘/invalid session 발생 시 자동 재생성
+    - 세션 유실/창 닫힘/DevTools 타임아웃 시 자동 재생성
     - get() 호출만으로 복구 + 재시도
-    - 주기적 헬스체크로 사전 감지
+    - 주기적 헬스체크(15회마다)
     """
     def __init__(self):
         self.lock = Lock()
         self.driver = setup_driver()
-        self.nav_count = 0  # 네비게이션 횟수(헬스체크 트리거)
+        self.nav_count = 0
 
     def _healthcheck(self) -> bool:
         try:
-            # 간단한 JS 실행 여부로 세션 생존 확인
             self.driver.execute_script("return 1+1")
             return True
         except (InvalidSessionIdException, NoSuchWindowException, WebDriverException):
@@ -83,24 +91,26 @@ class DriverManager:
             logging.info("[DriverManager] 드라이버 재생성 완료")
 
     def ensure_alive(self):
-        # 15회마다 가벼운 헬스체크(오버헤드 낮음)
         self.nav_count += 1
         if self.nav_count % 15 == 0 and not self._healthcheck():
             logging.warning("[DriverManager] 헬스체크 실패 → 드라이버 재생성")
             self.restart()
 
+    def _is_recoverable(self, err: Exception) -> bool:
+        s = str(err).lower()
+        return any(sig in s for sig in _RECOVER_SIGNALS)
+
     def get(self, url: str, retries: int = 2, backoff: float = 1.0) -> bool:
         """
-        안전 네비게이션: 세션 오류 시 즉시 재생성 후 재시도
+        안전 네비게이션: 세션/DevTools 오류 시 즉시 재생성 후 재시도
         """
         for attempt in range(retries + 1):
             self.ensure_alive()
             try:
                 self.driver.get(url)
-                # 알럿 즉시 수습
                 _accept_alert_if_present(self.driver, timeout=0.8)
                 return True
-            except (InvalidSessionIdException, NoSuchWindowException):
+            except (InvalidSessionIdException, NoSuchWindowException) as e:
                 logging.warning(f"[DriverManager] 세션 소실 감지 → 재생성 (attempt {attempt+1})")
                 self.restart()
             except TimeoutException:
@@ -110,14 +120,19 @@ class DriverManager:
                     pass
                 logging.warning("[DriverManager] Timeout → 백오프 재시도")
             except WebDriverException as e:
-                # 알럿 가능성 우선 처리
-                if _accept_alert_if_present(self.driver, timeout=1.2):
-                    try:
-                        self.driver.get(url)
-                        return True
-                    except Exception:
-                        pass
-                logging.warning(f"[DriverManager] WebDriverException: {e} → 재시도")
+                # DevTools 로컬포트 read timeout/HTTPConnectionPool 포함
+                if self._is_recoverable(e):
+                    logging.warning(f"[DriverManager] 복구 신호 감지 → 재생성 (attempt {attempt+1}) : {e}")
+                    self.restart()
+                else:
+                    # 알럿 가능성 우선 처리
+                    if _accept_alert_if_present(self.driver, timeout=1.2):
+                        try:
+                            self.driver.get(url)
+                            return True
+                        except Exception:
+                            pass
+                    logging.warning(f"[DriverManager] WebDriverException: {e} → 재시도")
             time.sleep(backoff * (2 ** attempt) + random.uniform(0, 0.5))
         logging.error(f"[DriverManager] GET 실패: {url}")
         return False
@@ -178,18 +193,13 @@ def _accept_alert_if_present(driver, timeout=1.5):
     except Exception:
         return False
 
-# 기존 호환용: safe_get → DriverManager.get 위임
+# 하위 호환: 기존 safe_get을 남겨둠(DriverManager 사용 권장)
 def safe_get(driver, url, retries=3, base_sleep=1.2):
-    """
-    (하위호환) 외부 코드가 직접 driver를 넘길 때도 동작하도록 래핑.
-    세션 유실 복구가 필요하면 DriverManager 사용을 권장.
-    """
     try:
         driver.get(url)
         _accept_alert_if_present(driver, timeout=0.8)
         return True
     except (InvalidSessionIdException, NoSuchWindowException, TimeoutException, WebDriverException):
-        # 최소한의 폴백: 간단 재시도
         for i in range(retries):
             try:
                 driver.get(url)
