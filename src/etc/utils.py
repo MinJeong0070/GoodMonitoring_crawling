@@ -1,44 +1,41 @@
-import os
-import re
-import logging
+import os, re, json, time, random, logging
 import pandas as pd
 from datetime import datetime
 import undetected_chromedriver as uc
 
-# 재시도/슬립/체크포인트용 import
-import time
-import random
-import json
 from threading import Lock
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import (
+    TimeoutException, WebDriverException, NoSuchWindowException,
+    InvalidSessionIdException
+)
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
 os.makedirs('log', exist_ok=True)
 
+# ---------------------------
+# Chrome 드라이버 생성
+# ---------------------------
 def setup_driver():
     logging.info("웹드라이버 시작")
     options = uc.ChromeOptions()
-    user_agent = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/128.0.0.0 Safari/537.36"
-    )
-    options.add_argument(f"user-agent={user_agent}")
-    options.page_load_strategy = 'eager'  # DOMContentLoaded 시점 반환
+    ua = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) "
+          "Chrome/128.0.0.0 Safari/537.36")
+    options.add_argument(f"user-agent={ua}")
+    options.page_load_strategy = 'eager'   # DOMContentLoaded 기준
     options.add_argument('--disable-popup-blocking')
-    # options.add_argument("--disable-javascript")            # 필요 시 주석 처리 (성능 유지하되 기능보장)
     options.add_argument("--blink-settings=imagesEnabled=false")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    # options.add_argument("--headless=new")  # 필요시 활성
 
     driver = uc.Chrome(options=options, enable_cdp_events=True, incognito=True)
     driver.set_page_load_timeout(20)
     driver.set_script_timeout(20)
 
-    # CDP로 리소스 차단 (이미지/폰트/미디어/애널리틱스)
+    # CDP: 불필요 리소스 차단
     try:
         driver.execute_cdp_cmd("Network.enable", {})
         driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": [
@@ -50,23 +47,101 @@ def setup_driver():
         driver.execute_cdp_cmd("Network.setCacheDisabled", {"cacheDisabled": False})
     except Exception:
         pass
-
     return driver
 
 
+# ---------------------------
+# 드라이버 매니저(자동 복구 핵심)
+# ---------------------------
+class DriverManager:
+    """
+    - 세션 유실/창 닫힘/invalid session 발생 시 자동 재생성
+    - get() 호출만으로 복구 + 재시도
+    - 주기적 헬스체크로 사전 감지
+    """
+    def __init__(self):
+        self.lock = Lock()
+        self.driver = setup_driver()
+        self.nav_count = 0  # 네비게이션 횟수(헬스체크 트리거)
+
+    def _healthcheck(self) -> bool:
+        try:
+            # 간단한 JS 실행 여부로 세션 생존 확인
+            self.driver.execute_script("return 1+1")
+            return True
+        except (InvalidSessionIdException, NoSuchWindowException, WebDriverException):
+            return False
+
+    def restart(self):
+        with self.lock:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = setup_driver()
+            self.nav_count = 0
+            logging.info("[DriverManager] 드라이버 재생성 완료")
+
+    def ensure_alive(self):
+        # 15회마다 가벼운 헬스체크(오버헤드 낮음)
+        self.nav_count += 1
+        if self.nav_count % 15 == 0 and not self._healthcheck():
+            logging.warning("[DriverManager] 헬스체크 실패 → 드라이버 재생성")
+            self.restart()
+
+    def get(self, url: str, retries: int = 2, backoff: float = 1.0) -> bool:
+        """
+        안전 네비게이션: 세션 오류 시 즉시 재생성 후 재시도
+        """
+        for attempt in range(retries + 1):
+            self.ensure_alive()
+            try:
+                self.driver.get(url)
+                # 알럿 즉시 수습
+                _accept_alert_if_present(self.driver, timeout=0.8)
+                return True
+            except (InvalidSessionIdException, NoSuchWindowException):
+                logging.warning(f"[DriverManager] 세션 소실 감지 → 재생성 (attempt {attempt+1})")
+                self.restart()
+            except TimeoutException:
+                try:
+                    self.driver.execute_script("window.stop();")
+                except Exception:
+                    pass
+                logging.warning("[DriverManager] Timeout → 백오프 재시도")
+            except WebDriverException as e:
+                # 알럿 가능성 우선 처리
+                if _accept_alert_if_present(self.driver, timeout=1.2):
+                    try:
+                        self.driver.get(url)
+                        return True
+                    except Exception:
+                        pass
+                logging.warning(f"[DriverManager] WebDriverException: {e} → 재시도")
+            time.sleep(backoff * (2 ** attempt) + random.uniform(0, 0.5))
+        logging.error(f"[DriverManager] GET 실패: {url}")
+        return False
+
+    def quit(self):
+        try:
+            self.driver.quit()
+        except Exception:
+            pass
+
+
+# ---------------------------
+# CSV/전처리 유틸
+# ---------------------------
 def result_csv_data(search, platform, subdir, base_path='csv'):
     file_path = os.path.join(base_path, subdir, today, f'{platform}_{search}.csv')
     if not os.path.isfile(file_path):
         return pd.DataFrame()
     try:
-        df = pd.read_csv(file_path, encoding='utf-8')
-        return df
+        return pd.read_csv(file_path, encoding='utf-8')
     except Exception as e:
         print(f"[오류] CSV 읽기 실패 ({file_path}): {e}")
         return pd.DataFrame()
 
-
-# csv 저장(추가 시 header=False)
 def save_to_csv(df, file_name):
     try:
         os.makedirs(os.path.dirname(file_name), exist_ok=True)
@@ -78,27 +153,18 @@ def save_to_csv(df, file_name):
     except Exception as e:
         print(f"파일 저장 오류: {e}")
 
-
 def clean_title(title):
-    # 제목 뒤 넘버링 제거
     title = re.sub(r'\d+$', '', title or '').strip()
-    # 파일 확장자 제거 (.jpg, .mp4 등)
     title = re.sub(r'\.(jpg|png|gif|mp4|avi|mkv|webm|jpeg)$', '', title, flags=re.IGNORECASE).strip()
-    # 초성 제거 (자음만 있는 경우)
     title = re.sub(r'^[ㄱ-ㅎㅏ-ㅣ]+$', '', title).strip()
-    # 따옴표 제거
     title = title.replace('"', '').strip()
     return title
 
 
-# ===========================
-# 안정화용 유틸 (통합 추가)
-# ===========================
-
+# ---------------------------
+# 보조 유틸
+# ---------------------------
 def human_sleep(short_min=0.2, short_max=0.6, long_prob=0.0, long_min=6, long_max=10):
-    """
-    페이지 단위로만 소량 지터(기본). 필요 시 long_prob 조정.
-    """
     if random.random() < long_prob:
         time.sleep(random.uniform(long_min, long_max))
     else:
@@ -112,43 +178,29 @@ def _accept_alert_if_present(driver, timeout=1.5):
     except Exception:
         return False
 
-
+# 기존 호환용: safe_get → DriverManager.get 위임
 def safe_get(driver, url, retries=3, base_sleep=1.2):
     """
-    느린 페이지/일시 오류 대비 안전 접속.
-    - set_page_load_timeout(20)
-    - 실패 시 window.stop() 시도
-    - 알럿 자동 수습
-    - 지수 백오프 재시도
+    (하위호환) 외부 코드가 직접 driver를 넘길 때도 동작하도록 래핑.
+    세션 유실 복구가 필요하면 DriverManager 사용을 권장.
     """
-    for i in range(retries):
-        try:
-            driver.get(url)
-            # 빠른 알럿 처리
-            _accept_alert_if_present(driver, timeout=0.8)
-            return True
-        except TimeoutException:
+    try:
+        driver.get(url)
+        _accept_alert_if_present(driver, timeout=0.8)
+        return True
+    except (InvalidSessionIdException, NoSuchWindowException, TimeoutException, WebDriverException):
+        # 최소한의 폴백: 간단 재시도
+        for i in range(retries):
             try:
-                driver.execute_script("window.stop();")
+                driver.get(url)
+                _accept_alert_if_present(driver, timeout=0.8)
+                return True
             except Exception:
-                pass
-            logging.warning(f"[safe_get] Timeout: {url}")
-        except WebDriverException as e:
-            # 알럿 수습 후 재시도
-            if _accept_alert_if_present(driver, timeout=1.2):
-                try:
-                    driver.get(url)
-                    return True
-                except Exception:
-                    pass
-            logging.warning(f"[safe_get] WebDriverException: {e}")
-        time.sleep(base_sleep * (2 ** i) + random.uniform(0, 0.8))
-
-    logging.error(f"[safe_get] FAILED after {retries} tries: {url}")
-    return False
+                time.sleep(base_sleep * (2 ** i) + random.uniform(0, 0.5))
+        return False
 
 
-# 진행상황 체크포인트 (이어하기)
+# 진행상황 체크포인트
 _PROGRESS_PATH = "progress.json"
 _progress_lock = Lock()
 
