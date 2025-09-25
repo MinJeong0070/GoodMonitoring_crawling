@@ -30,6 +30,7 @@ class CrawlerGUI:
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
         self.is_paused = False
+        self.worker_thread = None  # 동시 실행 방지용
 
         # UI
         self._build_filters()
@@ -115,9 +116,12 @@ class CrawlerGUI:
     def _build_controls(self):
         frm = ttk.Frame(self.root)
         frm.pack(fill="x", padx=10, pady=6)
-        ttk.Button(frm, text="시작", command=self.start_crawl, width=12).pack(side="left", padx=6)
-        ttk.Button(frm, text="중지(일시정지)", command=self.pause_crawl, width=14).pack(side="left", padx=6)
-        ttk.Button(frm, text="종료", command=self.stop_crawl, width=10).pack(side="left", padx=6)
+        self.btn_start = ttk.Button(frm, text="시작", command=self.start_crawl, width=12)
+        self.btn_start.pack(side="left", padx=6)
+        self.btn_pause = ttk.Button(frm, text="중지(일시정지)", command=self.pause_crawl, width=14)
+        self.btn_pause.pack(side="left", padx=6)
+        self.btn_stop = ttk.Button(frm, text="종료", command=self.stop_crawl, width=10)
+        self.btn_stop.pack(side="left", padx=6)
 
     def _build_log(self):
         frm = ttk.LabelFrame(self.root, text="로그")
@@ -173,6 +177,11 @@ class CrawlerGUI:
 
     # ── 실행/일시정지/종료 ─────────────────────────────────────
     def start_crawl(self):
+        # 동시 실행 가드
+        if self.worker_thread and self.worker_thread.is_alive():
+            messagebox.showwarning("경고", "이미 실행 중입니다.")
+            return
+
         self.stop_event.clear()
         self.pause_event.clear()
         self.is_paused = False
@@ -190,19 +199,21 @@ class CrawlerGUI:
             return
         selected_accounts = [self.accounts[i] for i in sel_idx]
 
-        th = threading.Thread(
+        self.btn_start.config(state="disabled")  # 시작 중복 방지
+
+        self.worker_thread = threading.Thread(
             target=self._crawl_thread,
             args=(selected_accounts, start, end, status),
             daemon=True
         )
-        th.start()
+        self.worker_thread.start()
 
     def _crawl_thread(self, selected_accounts, start, end, status):
         def log(msg):
             self.txt_log.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
             self.txt_log.see(tk.END)
 
-        run_crawl(
+        df, saved_path = run_crawl(
             selected_accounts=selected_accounts,
             start_date=start, end_date=end,
             status_group=status,
@@ -212,7 +223,13 @@ class CrawlerGUI:
             stop_event=self.stop_event,
             pause_event=self.pause_event
         )
-        log(f"작업 완료. 파일: {Path(OUTPUT_DIR)}/신고내역_전체_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx")
+
+        if saved_path:
+            log(f"작업 완료. 파일: {saved_path}")
+        else:
+            log("작업 완료. (수집 0건이어서 파일 저장 생략)")
+
+        self.btn_start.config(state="normal")  # 버튼 복구
 
     def pause_crawl(self):
         if not self.pause_event.is_set():

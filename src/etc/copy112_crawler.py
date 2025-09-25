@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-copy112_crawler.py
-
-- 로그인 → 신고내역 리스트 크롤링 → (옵션) 신고처리완료 상세 진입(심의결과/처리내용) → 엑셀 저장
-- GUI(copy112_gui.py)에서 run_crawl()를 호출해 사용
-"""
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -19,6 +12,15 @@ import pandas as pd
 import time
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
+
+"""
+copy112_crawler.py
+
+- 로그인 → 신고내역 리스트 크롤링 → (옵션) 신고처리완료 상세 진입(심의결과/처리내용) → 엑셀 저장
+- GUI(copy112_gui.py)에서 run_crawl()를 호출해 사용
+"""
+
 
 # 대상 URL
 LIST_URL = "https://copy112.kcopa.or.kr/mypage/unlaw/mypageUnlawList.do"
@@ -55,7 +57,7 @@ def _parse_row_date(row):
 
 
 def _within_period(date_text, start_date, end_date):
-    """신고일자가 [start_date, end_date] 안에 있는지"""
+    """신고일자가 [start_date, end_date] 안에 있는지 (양 끝 포함)"""
     if not (start_date or end_date):
         return True
     try:
@@ -212,6 +214,8 @@ def _extract_row_dict(row):
     """리스트 페이지의 tr → dict 변환"""
     tds = row.find_elements(By.TAG_NAME, "td")
     d = {
+        "계정": "",
+        "성명": "",
         "순번": tds[0].text.strip(),
         "접수번호": tds[1].text.strip(),
         "신고유형": tds[2].text.strip(),
@@ -267,7 +271,6 @@ def run_crawl(
     detail_allowed = (status_group == "신고 접수 완료") and bool(detailed_for_done)
 
     all_rows = []
-    ts = datetime.now().strftime("%Y%m%d_%H%M")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -294,7 +297,7 @@ def run_crawl(
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
         collected_this_account = 0
-        found_any_in_period = False  # 이 계정에서 '기간 내 데이터'를 한번이라도 찾았는지
+        found_any_in_period = False  # 이 계정에서 '기간 내 데이터'를 한번이라도 찾았는지 확인
 
         try:
             # 로그인
@@ -460,18 +463,44 @@ def run_crawl(
         if stop_event and stop_event.is_set():
             break
 
-    # 전체 저장(부분 저장 없음)
+    # ───────── 최종 저장 (원자적, 충돌 방지, 0건 미저장) ─────────
     df = pd.DataFrame(all_rows, columns=[
         "계정", "성명", "순번", "접수번호", "신고유형", "사이트링크",
         "저작물명", "서버위치", "처리현황", "신고일자", "심의결과", "처리내용"
     ])
 
-    final_path = None
-    try:
-        final_path = Path(output_dir) / f"신고내역_전체_{ts}.xlsx"
-        df.to_excel(final_path, index=False)
-        log(f"전체 저장 완료: {final_path.name} (총 {len(df)}건)")
-    except Exception as e:
-        log(f"최종 저장 실패: {e}")
+    # 수집 0건이면 저장 생략
+    if len(df) == 0:
+        log("수집 결과 0건으로 최종 저장을 건너뜁니다.")
+        return df, None
 
-    return df, (str(final_path) if final_path else None)
+    # 파일명: 초 단위 + UUID (충돌 방지)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    uid = uuid4().hex[:6]
+    final_name = f"신고내역_전체_{ts}_{uid}.xlsx"
+    final_tmp = output_dir / (final_name + ".tmp")
+    final_path = output_dir / final_name
+
+    # 원자적 저장 + 재시도
+    last_err = None
+    for i in range(3):
+        try:
+            df.to_excel(final_tmp, index=False)
+            # 임시 파일을 최종 파일로 교체
+            if final_path.exists():
+                final_path.unlink(missing_ok=True)
+            final_tmp.replace(final_path)
+            log(f"전체 저장 완료: {final_path.name} (총 {len(df)}건)")
+            return df, str(final_path)
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+
+    log(f"최종 저장 실패: {last_err}")
+    # 임시 파일 청소
+    try:
+        if final_tmp.exists():
+            final_tmp.unlink(missing_ok=True)
+    except Exception:
+        pass
+    return df, None
