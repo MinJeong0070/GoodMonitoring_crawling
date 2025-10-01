@@ -12,6 +12,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from datetime import datetime
 
+# 🔹 추가: 시작 시 진행상황 리셋 유틸
+from pathlib import Path
+import json
+PROGRESS_PATH = Path("progress.json")
+
+def reset_progress():
+    """크롤링 시작 시 진행상황 파일을 빈 JSON으로 초기화"""
+    try:
+        PROGRESS_PATH.write_text("{}", encoding="utf-8")
+        logging.info("[INFO] progress.json reset at crawl start.")
+    except Exception as e:
+        logging.warning(f"[WARNING] Failed to reset progress.json at start: {e}")
+
 # utils.py 하나에서 모두 가져오도록 통합
 from src.etc.utils import (
     setup_driver,
@@ -172,6 +185,9 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
     logging.info("=" * 56)
     logging.info("                 디시인사이드 크롤링 시작")
     logging.info("=" * 56)
+
+    # 🔹 추가: 크롤링 시작 시 진행상황 리셋
+    reset_progress()
 
     wd_detail = setup_driver()
     processed_keywords = 0
