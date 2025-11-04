@@ -1,213 +1,245 @@
+# fomos_crawler.py
 import os
 import re
-import time
 import logging
+from datetime import datetime
+
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from datetime import datetime
+from selenium.common.exceptions import TimeoutException
 
-from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
+# ⚠️ setup_driver / save_to_csv / clean_title / result_csv_data 는 기존 유틸을 사용합니다.
+#    setup_driver 안에 "이미지/알림 차단 prefs" 적용을 권장합니다.
+from src.etc.utils import setup_driver, save_to_csv, clean_title, result_csv_data
 
-# 실행날짜 변수 및 폴더 생성
+
+# ===== 실행날짜 & 로깅 =====
 today = datetime.now().strftime("%y%m%d")
-if not os.path.exists(f'log'):
-    os.makedirs(f'log')
+os.makedirs("log", exist_ok=True)
 
 logging.basicConfig(
-    filename=f'포모스_log_{today}.txt',  # 로그 파일 이름
-    level=logging.INFO,  # 로그 레벨
-    format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
-    encoding='utf-8'  # 인코딩 설정
+    filename=f"log/포모스_log_{today}.txt",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding="utf-8",
 )
 
 
-def fomos_crw(wd, url, search):
+# ===== 상세 페이지 크롤링 =====
+def _close_alert_if_any(wd, url: str) -> bool:
+    """경고(alert)창이 있으면 닫고 True 반환, 없으면 False"""
     try:
-        logging.info(f"크롤링 시작: {url}")
-        wd.set_page_load_timeout(10)
-        wd.get(f'{url}')
-        logging.info(f"접속: {url}")
-        time.sleep(1)
-        WebDriverWait(wd, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'view_area')))
-        soup = BeautifulSoup(wd.page_source, 'html.parser')
+        WebDriverWait(wd, 2).until(EC.alert_is_present())
+        alert = wd.switch_to.alert
+        txt = alert.text
+        alert.accept()
+        logging.warning(f"[상세] 경고창 처리 → '{txt}' → 건너뜀: {url}")
+        return True
+    except Exception:
+        return False
 
-        search_word_list = []
-        search_plt_list = []
-        writer_list = []
-        url_list = []
-        title_list = []
-        content_list = []
-        date_list = []
-        image_check_list = []
 
-        content_div = soup.find('div', class_='view_text')
+def fomos_crw(wd, url, search) -> pd.DataFrame:
+    try:
+        logging.info(f"[상세] 크롤링 시작: {url}")
+        wd.set_page_load_timeout(15)
 
-        raw_title = soup.find('div', class_='board_area common_view').find('h3').get_text()
-        cleaned_title = clean_title(raw_title)  # 제목 정리 함수 사용
-        title_list.append(cleaned_title)
-        logging.info(f"제목 추출 성공: {cleaned_title}")
+        # 페이지 진입
+        try:
+            wd.get(url)
+        except Exception as e:
+            logging.error(f"[상세] 페이지 요청 실패(로드 타임아웃/연결): {url} / {e}")
+            return pd.DataFrame()
 
-        # <a> 태그 중 이미지가 없는 경우에만 삭제
-        for a_tag in content_div.find_all('a'):
-            if (
-                    not a_tag.find('img') and
-                    not a_tag.find('span', class_='scrap_img') and
-                    not a_tag.find('video') and
-                    not (a_tag.find('iframe') and 'youtube.com' in a_tag.decode_contents())
-            ):
+        # alert() 대응 (비공개/삭제글 등)
+        if _close_alert_if_any(wd, url):
+            return pd.DataFrame()
+
+        # 본문 컨테이너 로드
+        try:
+            WebDriverWait(wd, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.view_area"))
+            )
+        except TimeoutException as e:
+            logging.error(f"[상세] 본문 컨테이너 로드 실패: {url} / {e}")
+            return pd.DataFrame()
+
+        soup = BeautifulSoup(wd.page_source, "html.parser")
+
+        # 제목
+        title_el = soup.select_one("div.board_area.common_view > h3")
+        if not title_el:
+            logging.warning(f"[상세] 제목 엘리먼트 없음: {url}")
+            return pd.DataFrame()
+        raw_title = title_el.get_text()
+        cleaned_title = clean_title(raw_title)
+
+        # 작성자/날짜
+        sub_spans = soup.select("p.sub_tit > span")
+        if len(sub_spans) < 2:
+            logging.warning(f"[상세] 작성자/날짜 엘리먼트 부족: {url}")
+            return pd.DataFrame()
+
+        writer = sub_spans[0].get_text(strip=True)
+        date_str_raw = sub_spans[1].get_text(strip=True)
+        date_str = date_str_raw.split(" ")[0]  # 'YYYY-MM-DD ...'
+        try:
+            date_val = datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            date_val = pd.to_datetime(date_str, errors="coerce")
+            if pd.isna(date_val):
+                logging.warning(f"[상세] 날짜 파싱 실패: {date_str_raw} ({url})")
+                return pd.DataFrame()
+
+        # 본문
+        content_div = soup.select_one("div.view_text")
+        if not content_div:
+            logging.warning(f"[상세] 본문(view_text) 없음: {url}")
+            return pd.DataFrame()
+
+        # 미디어 없는 a 태그 제거
+        for a_tag in content_div.find_all("a"):
+            has_media = (
+                a_tag.find("img")
+                or a_tag.find("span", class_="scrap_img")
+                or a_tag.find("video")
+                or (a_tag.find("iframe") and "youtube.com" in a_tag.decode_contents())
+            )
+            if not has_media:
                 a_tag.decompose()
 
-        # URL 형태의 텍스트 제거 (http:// 또는 https://로 시작하는 모든 링크)
-        post_content = content_div.get_text(separator='\n', strip=True)
-        post_content = re.sub(r'http[s]?://\S+', '', post_content)
+        # 본문 텍스트 정리
+        post_content = content_div.get_text(separator="\n", strip=True)
+        post_content = re.sub(r"https?://\S+", "", post_content)
+        post_content = re.sub(r"\n{2,}", "\n", post_content).strip()
 
-        # 본문 텍스트 추출 (줄바꿈 유지), URL 제거
-        post_content = content_div.get_text(separator='\n', strip=True)
-        post_content = re.sub(r'https?://\S+', '', post_content)
-        post_content = re.sub(r'\n{2,}', '\n', post_content).strip()
+        df_row = pd.DataFrame(
+            {
+                "검색어": [search],
+                "플랫폼": ["웹페이지(포모스)"],
+                "게시물 URL": [url],
+                "게시물 제목": [cleaned_title],
+                "게시물 내용": [post_content],
+                "게시물 등록일자": [date_val],
+                "계정명": [writer],
+            }
+        )
 
-        content_list.append(post_content)
-        logging.info(f"내용 추출 성공: {post_content}")
-
-        search_plt_list.append('웹페이지(포모스)')
-        url_list.append(url)
-
-        search_word_list.append(search)
-
-        date_str = soup.find('p', class_='sub_tit').find_all('span')[1].text.split(' ')[0]
-
-        date = datetime.strptime(date_str, '%Y-%m-%d')
-        date_list.append(date)
-        logging.info(f"날짜 추출 성공: {date_str}")
-
-        # 채널명
-        writer_list.append(soup.find('p', class_='sub_tit').find_all('span')[0].text)
-
-        # # 이미지/비디오/유튜브 유무 확인
-        # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
-        #     bg_images = content_div.find_all('span', class_='scrap_img')
-        #
-        #     # 2. 일반 이미지 (img 태그) 확인
-        #     images = content_div.find_all('img')
-        #
-        #     # 3. 비디오 확인 (video 태그)
-        #     videos = content_div.find_all('video')
-        #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
-        #     iframes = content_div.find_all('iframe')
-        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
-        #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
-        #     article_links = content_div.find_all('a', href=True)
-        #     link_urls = [
-        #         a['href'] for a in article_links if 'http' in a['href']
-        #     ]
-        #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
-        #     text_content = content_div.get_text()
-        #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
-        #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
-        #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
-        #         image_check_list.append('O')
-        #     else:
-        #         image_check_list.append(' ')
-        #         logging.info(f'이미지 없음: {url}')
-        # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
-        #     image_check_list.append(' ')
-
-        main_temp = pd.DataFrame({
-
-            "검색어": search_word_list,
-            "플랫폼": search_plt_list,
-            "게시물 URL": url_list,
-            "게시물 제목": title_list,
-            "게시물 내용": content_list,
-            "게시물 등록일자": date_list,
-            "계정명": writer_list,
-            # "이미지 유무": image_check_list
-        })
-
-        # 데이터 저장
-        save_to_csv(main_temp, f'csv/18.포모스/{today}/포모스_{search}.csv')
-        logging.info(f'csv/18.포모스/{today}/포모스_{search}.csv')
+        save_to_csv(df_row, f"csv/18.포모스/{today}/포모스_{search}.csv")
+        logging.info(f"[상세] 저장 완료: csv/18.포모스/{today}/포모스_{search}.csv")
+        return df_row
 
     except Exception as e:
-        logging.error(f"오류 발생: {e}")
+        logging.error(f"[상세] 오류: {e}")
         return pd.DataFrame()
 
 
+# ===== 목록 페이지 순회 =====
+def _restart_driver(wd):
+    """드라이버 재시작(자원 정리용)"""
+    try:
+        wd.quit()
+    except Exception:
+        pass
+    return setup_driver()
+
+
 def fomos_main_crw(searchs, start_date, end_date, stop_event):
-    if not os.path.exists(f'csv/18.포모스/{today}'):
-        os.makedirs(f'csv/18.포모스/{today}')
-        print(f"폴더 생성 완료: {today}")
-    else:
-        print(f"해당 폴더 존재")
-    logging.info(f"========================================================")
-    logging.info(f"                    포모스 크롤링 시작")
-    logging.info(f"========================================================")
-    wd = setup_driver()
-    wd_dp1 = setup_driver()
-    # wd_dp1 = setup_driver()
-    for search in searchs:
-        if stop_event.is_set():
-            print("🛑 크롤링 중단됨")
-            break
+    os.makedirs(f"csv/18.포모스/{today}", exist_ok=True)
+    logging.info("=" * 56)
+    logging.info("포모스 크롤링 시작")
+    logging.info("=" * 56)
 
-        page_num = 1
-
-        while True:
+    wd = setup_driver()  # 단일 드라이버 사용
+    try:
+        for search in searchs:
             if stop_event.is_set():
+                print("🛑 크롤링 중단됨")
                 break
 
-            try:
-                logging.info(f"크롤링 시작-검색어: {search}")
-                url = f'https://www.fomos.kr/search/list?menu=talk&fword={search}&page={page_num}'
+            page_num = 1
+            while True:
+                if stop_event.is_set():
+                    break
+                try:
+                    list_url = f"https://www.fomos.kr/search/list?menu=talk&fword={search}&page={page_num}"
+                    logging.info(f"[목록] 접속: {list_url}")
 
-                wd_dp1.get(url)
+                    # 목록 진입
+                    try:
+                        wd.set_page_load_timeout(15)
+                        wd.get(list_url)
+                    except Exception as e:
+                        logging.error(f"[목록] 페이지 요청 실패: {list_url} / {e}")
+                        break
 
-                WebDriverWait(wd_dp1, 10).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, 'result_section.r_esports')))
-                time.sleep(2)
-                soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
+                    # 목록 li 등장 대기
+                    try:
+                        WebDriverWait(wd, 15).until(
+                            EC.presence_of_element_located(
+                                (By.CSS_SELECTOR, "div.result_section.r_esports ul.webzine li")
+                            )
+                        )
+                    except TimeoutException:
+                        soup_tmp = BeautifulSoup(wd.page_source, "html.parser")
+                        if not soup_tmp.select("ul.webzine > li"):
+                            logging.info(f"[목록] 결과 없음 → 검색어 '{search}' 종료")
+                            break
 
-                # 검색결과 리스트
-                li_tags = soup_dp1.find('ul', class_='webzine').find_all('li')
-                logging.info(f"검색목록 찾음.")
-                if not li_tags:
+                    soup = BeautifulSoup(wd.page_source, "html.parser")
+                    li_tags = soup.select("ul.webzine > li")
+                    if not li_tags:
+                        logging.info(f"[목록] li 없음 → 검색어 '{search}' 종료")
+                        break
+
+                    for li in li_tags:
+                        if stop_event.is_set():
+                            break
+                        a_tag = li.select_one("div.info p.tit a, p.tit a, p.para a")
+                        if not a_tag:
+                            logging.info("[목록] 제목 링크 없음 → 건너뜀")
+                            continue
+                        href = a_tag.get("href") or ""
+                        if not href.startswith("/"):
+                            logging.info(f"[목록] 비정상 href → 건너뜀: {href}")
+                            continue
+
+                        post_url = "https://www.fomos.kr" + href
+                        fomos_crw(wd, post_url, search)
+
+                except Exception as e:
+                    logging.error(f"[목록] 오류: {e}")
                     break
 
-                for li in li_tags:
-                    if stop_event.is_set():
-                        break
-                    url_str = li.find('p', class_='tit').find('a').get('href')
-                    url = 'https://www.fomos.kr' + url_str
-                    logging.info(f"url 찾음.")
-                    fomos_crw(wd, url, search)
+                # ---- 페이징/자원관리 ----
+                page_num += 1
+                if page_num % 5 == 0:  # 5페이지마다 크롬 재시작 → 커넥션 풀/메모리 누수 방지
+                    logging.info("[리소스 정리] 드라이버 세션 재시작")
+                    wd = _restart_driver(wd)
 
-            except Exception as e:
-                logging.error(f"오류 발생: {e}")
-                break
+                if page_num >= 15:  # 필요시 조정
+                    break
 
-            page_num += 1  # 페이지 수 증가
+    finally:
+        try:
+            wd.quit()
+        except Exception:
+            pass
 
-            if page_num == 15:
-                break
-    wd.quit()
-    wd_dp1.quit()
+    # ===== 결과 병합 =====
     if not stop_event.is_set():
-        result_dir = '결과/포모스'
-        if not os.path.exists(result_dir):
-            os.makedirs(result_dir)
-
-        all_data = pd.concat([
-            result_csv_data(search, platform='포모스', subdir='18.포모스')
-            for search in searchs
-        ])
-
-        all_data.to_csv(f'{result_dir}/포모스_raw data_{today}.csv', encoding='utf-8', index=False)
+        result_dir = "결과/포모스"
+        os.makedirs(result_dir, exist_ok=True)
+        try:
+            all_df = pd.concat(
+                [result_csv_data(search, platform="포모스", subdir="18.포모스") for search in searchs],
+                ignore_index=True,
+            )
+            out_path = f"{result_dir}/포모스_raw data_{today}.csv"
+            all_df.to_csv(out_path, encoding="utf-8", index=False)
+            logging.info(f"[결과] 병합 저장 완료: {out_path}")
+        except Exception as e:
+            logging.error(f"[결과] 병합 저장 실패: {e}")
