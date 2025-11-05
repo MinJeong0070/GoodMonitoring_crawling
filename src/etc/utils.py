@@ -10,29 +10,70 @@ import time
 import random
 import json
 from threading import Lock
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException, UnexpectedAlertPresentException
+from selenium.webdriver.common.by import By
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
 os.makedirs('log', exist_ok=True)
 
-def setup_driver():
+def _maybe_accept_alert(driver) -> bool:
+    try:
+        a = driver.switch_to.alert
+        txt = a.text
+        a.accept()
+        logging.info(f"[alert] accepted: {txt[:40]}")
+        return True
+    except Exception:
+        return False
+
+def setup_driver(headless: bool = False, user_agent: str | None = None):
     logging.info("웹드라이버 시작")
     options = uc.ChromeOptions()
-    user_agent = (
+
+    # ✅ UA (반드시 --user-agent= 로 전달)
+    ua = user_agent or (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/128.0.0.0 Safari/537.36"
     )
-    options.add_argument(f"user-agent={user_agent}")
-    options.page_load_strategy = 'eager'  # DOMContentLoaded 시점 반환
-    options.add_argument('--disable-popup-blocking')
-    options.add_argument("--disable-javascript")            # 필요 시 주석 처리
-    options.add_argument("--blink-settings=imagesEnabled=false")
+    options.add_argument(f"--user-agent={ua}")
+
+    # ✅ 로딩 전략: DOMContentLoaded 시점에 반환 → 속도 개선
+    options.page_load_strategy = "eager"
+
+    # ✅ 불필요 리소스 차단(이미지/미디어/알림 등) → 타임아웃·메모리 사용 감소
+    options.add_experimental_option(
+        "prefs",
+        {
+            "profile.managed_default_content_settings.images": 2,
+            "profile.managed_default_content_settings.plugins": 2,
+            "profile.managed_default_content_settings.popups": 2,
+            "profile.managed_default_content_settings.geolocation": 2,
+            "profile.managed_default_content_settings.notifications": 2,
+            "profile.managed_default_content_settings.media_stream": 2,
+            "profile.managed_default_content_settings.stylesheets": 2,
+        },
+    )
+
+    # ✅ 안정 옵션
+    options.add_argument("--disable-popup-blocking")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--incognito")
+    options.add_argument("--disable-blink-features=AutomationControlled")
 
-    driver = uc.Chrome(options=options, enable_cdp_events=True, incognito=True)
+    if headless:
+        options.add_argument("--headless=new")
+
+    # ❌ 사이트 동작에 영향 큰 옵션은 제거합니다.
+    # options.add_argument("--disable-javascript")            # ← 제거
+    # options.add_argument("--blink-settings=imagesEnabled=false")  # ← prefs로 대체
+
+    # ✅ CDP 이벤트는 비활성화 (일부 버전에서 columnNumber 관련 크래시 회피)
+    driver = uc.Chrome(options=options, enable_cdp_events=False)
+    driver.set_page_load_timeout(15)
     return driver
 
 
@@ -88,25 +129,48 @@ def human_sleep(short_min=1.5, short_max=3.0, long_prob=0.1, long_min=6, long_ma
 
 def safe_get(driver, url, retries=3, base_sleep=2):
     """
-    느린 페이지/일시 오류 대비 안전 접속.
-    - set_page_load_timeout(15)
-    - 실패 시 window.stop() 시도
-    - 지수 백오프 재시도
+    - 알럿/성인안내 모달 처리
+    - 느린 페이지 window.stop() + 지수 백오프 재시도
     """
     for i in range(retries):
         try:
             driver.set_page_load_timeout(15)
             driver.get(url)
+
+            # 즉시 알럿 처리
+            _maybe_accept_alert(driver)
+
+            # 간단 배너/동의 버튼 처리(있을 때만)
+            try:
+                for btn in driver.find_elements(By.CSS_SELECTOR, "button, a"):
+                    t = (btn.text or "").strip()
+                    if any(k in t for k in ("동의", "확인", "continue")):
+                        try:
+                            btn.click()
+                            break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
             return True
+
+        except UnexpectedAlertPresentException:
+            logging.warning("[safe_get] unexpected alert → accept & retry")
+            _maybe_accept_alert(driver)
+
         except TimeoutException:
             try:
                 driver.execute_script("window.stop();")
             except Exception:
                 pass
             logging.warning(f"[safe_get] Timeout: {url}")
+
         except WebDriverException as e:
             logging.warning(f"[safe_get] WebDriverException: {e}")
+
         time.sleep(base_sleep * (2 ** i) + random.uniform(0, 1))
+
     logging.error(f"[safe_get] FAILED after {retries} tries: {url}")
     return False
 
