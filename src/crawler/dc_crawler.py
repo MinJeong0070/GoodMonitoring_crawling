@@ -6,8 +6,8 @@ import logging
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from datetime import datetime
@@ -105,10 +105,10 @@ def dc_crw_detail(wd, url: str, search: str):
 
     try:
         WebDriverWait(wd, 12).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".view_content_wrap"))
+            lambda drv: drv.find_elements(By.CSS_SELECTOR, ".view_content_wrap, .write_div")
         )
     except TimeoutException:
-        logging.warning(f"[detail] 본문 래퍼 미노출: {url}")
+        logging.warning(f"[detail] 본문 컨테이너 미등장: {url}")
         return None
 
     soup = BeautifulSoup(wd.page_source, 'html.parser')
@@ -234,14 +234,29 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                         after_start_flag = True
                         break
 
+                    fail_streak = 0
+
                     # 상세 수집
                     try:
                         one = dc_crw_detail(wd_detail, post_url, search)
                         if one is not None:
                             save_to_csv(one, f'{out_dir}/디시인사이드_{search}.csv')
+                            fail_streak = 0
+                        else:
+                            fail_streak += 1
                     except Exception as e:
                         logging.error(f"[{search}] 상세 실패: {e}")
-                        continue
+                        fail_streak += 1
+
+                    # 연속 실패 3회 시 드라이버 재기동
+                    if fail_streak >= 3:
+                        logging.info("[driver] 실패 누적 → 드라이버 재기동")
+                        try:
+                            wd_detail.quit()
+                        except Exception:
+                            pass
+                        wd_detail = setup_driver()
+                        fail_streak = 0
 
                     human_sleep()  # 속도 제어
 
