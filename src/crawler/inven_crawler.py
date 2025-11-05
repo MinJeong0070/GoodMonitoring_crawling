@@ -69,13 +69,13 @@ def inven_crw(wd, url, search):
 
         # 날짜 출력
         date_str = soup.find('div', class_='articleDate').get_text()
-        date = datetime.strptime(date_str, '%Y-%m-%d %H:%M')
+        date = datetime.strptime(date_str, '%Y-%m-%d')
         date_list.append(date)
         # 채널명
         writer_list.append(soup.find('div', class_="articleWriter").get_text().strip())
 
         # 추출시간
-        now_date.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        now_date.append(datetime.now().strftime('%Y-%m-%d'))
 
         # 임시 데이터프레임 생성
         main_temp = pd.DataFrame({
