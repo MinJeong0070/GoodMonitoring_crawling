@@ -1,272 +1,243 @@
-# cook82_crawler.py
 import os
 import re
+import time
 import logging
-from datetime import datetime, date
-
 import pandas as pd
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException
+from datetime import datetime
 
-from src.etc.utils import setup_driver, save_to_csv, clean_title, result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
 
-
-# ===== 실행날짜 & 로깅 =====
+# 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
-os.makedirs("log", exist_ok=True)
+if not os.path.exists(f'log'):
+    os.makedirs(f'log')
 
 logging.basicConfig(
-    filename=f"log/82쿡_log_{today}.txt",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    encoding="utf-8",
+    filename=f'82쿡_log_{today}.txt',  # 로그 파일 이름
+    level=logging.INFO,  # 로그 레벨
+    format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
+    encoding='utf-8'  # 인코딩 설정
 )
 
 
-# ===== 목록 날짜 파서 =====
-def _parse_list_date(td) -> date | None:
-    """82쿡 목록 날짜 파싱: title(YYYY-MM-DD hh:mm:ss) 우선 → 텍스트 보조(YYYY/MM/DD 또는 YYYY-MM-DD)."""
-    if td is None:
-        return None
-
-    title = (td.get("title") or "").strip()
-    if title:
-        m = re.match(r"(\d{4}-\d{2}-\d{2})", title)
-        if m:
-            return datetime.strptime(m.group(1), "%Y-%m-%d").date()
-
-    txt = td.get_text(strip=True)
-    if re.match(r"\d{4}/\d{2}/\d{2}", txt):
-        return datetime.strptime(txt[:10], "%Y/%m/%d").date()
-    if re.match(r"\d{4}-\d{2}-\d{2}", txt):
-        return datetime.strptime(txt[:10], "%Y-%m-%d").date()
-
-    return None
-
-
-# ===== 상세 페이지 크롤링 =====
-def cook82_crw(wd, url, search) -> pd.DataFrame:
+# 한페이지 크롤링
+def cook82_crw(wd, url, search):
     try:
-        logging.info(f"[상세] 크롤링 시작: {url}")
-        wd.set_page_load_timeout(15)
-        wd.get(url)
+        logging.info(f"크롤링 시작: {url}")
+        wd.set_page_load_timeout(10)
+        wd.get(f'{url}')
+        logging.info(f"접속: {url}")
+        time.sleep(1)
+        WebDriverWait(wd, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'wrap')))
+        soup = BeautifulSoup(wd.page_source, 'html.parser')
 
-        # 본문 컨테이너 로드
-        try:
-            WebDriverWait(wd, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "#articleBody"))
-            )
-        except TimeoutException as e:
-            logging.error(f"[상세] 본문 컨테이너 로드 실패: {url} / {e}")
-            return pd.DataFrame()
+        # 추후 수정하기
+        search_word_list = []
+        search_plt_list = []
+        writer_list = []
+        url_list = []
+        title_list = []
+        content_list = []
+        date_list = []
+        current_date_list = []
+        image_check_list = []
 
-        soup = BeautifulSoup(wd.page_source, "html.parser")
+        content_div = soup.find('div', id='articleBody')
 
-        # 제목
-        h4 = soup.select_one("h4.title.bbstitle > span")
-        if not h4:
-            logging.warning(f"[상세] 제목 엘리먼트 없음: {url}")
-            return pd.DataFrame()
-        raw_title = h4.get_text()
-        cleaned_title = clean_title(raw_title)
-        logging.info(f"[상세] 제목 추출: {cleaned_title}")
+        raw_title = soup.find('h4', class_='title bbstitle').find('span').get_text()
+        cleaned_title = clean_title(raw_title)  # 제목 정리 함수 사용
+        title_list.append(cleaned_title)
+        logging.info(f"제목 추출 성공: {cleaned_title}")
 
-        # 본문
-        content_div = soup.select_one("#articleBody")
-        if not content_div:
-            logging.warning(f"[상세] 본문 엘리먼트 없음: {url}")
-            return pd.DataFrame()
+        # content =  soup.find('div', id='articleBody').get_text().strip()
+        # content_strip = ' '.join(content.split())
+        # content_list.append(content_strip)
+        # logging.info("내용 추출 성공")
 
-        # 이미지/영상/유튜브가 없는 a 태그 제거
-        for a in content_div.find_all("a"):
-            has_media = (
-                a.find("img")
-                or a.find("span", class_="scrap_img")
-                or a.find("video")
-                or (a.find("iframe") and "youtube.com" in a.decode_contents())
-            )
-            if not has_media:
-                a.decompose()
+        # <a> 태그 중 이미지/비디오/유튜브 없는 경우만 제거
+        for a_tag in content_div.find_all('a'):
+            if (
+                    not a_tag.find('img') and
+                    not a_tag.find('span', class_='scrap_img') and
+                    not a_tag.find('video') and
+                    not (a_tag.find('iframe') and 'youtube.com' in a_tag.decode_contents())
+            ):
+                a_tag.decompose()
 
-        post_content = content_div.get_text(separator=" ", strip=True)
-        post_content = re.sub(r"https?://\S+", "", post_content).strip()
+        # 본문 텍스트 추출 (띄어쓰기 유지)
+        post_content = content_div.get_text(separator=' ', strip=True)
 
-        # 작성자
-        writer_el = soup.select_one("div.readLeft a")
-        writer = writer_el.get_text(strip=True) if writer_el else ""
+        # URL 제거 (텍스트에 포함된 경우만)
+        post_content = re.sub(r'https?://[^\s]+', '', post_content)
 
-        # 상세 날짜: readRight 텍스트에서 YYYY-MM-DD / YYYY/MM/DD 탐색
-        right_txt = soup.select_one("div.readRight")
-        if not right_txt:
-            logging.warning(f"[상세] 날짜 영역 없음: {url}")
-            return pd.DataFrame()
-        date_text = right_txt.get_text(" ", strip=True)
-        m = re.search(r"\d{4}[-/]\d{2}[-/]\d{2}", date_text)
-        if not m:
-            logging.warning(f"[상세] 날짜 형식 인식 실패: {date_text}")
-            return pd.DataFrame()
-        date_str = m.group(0).replace("/", "-")
-        reg_dt = datetime.strptime(date_str, "%Y-%m-%d")
+        # 게시글 내용 추가
+        content_list.append(post_content)
+        logging.info(f"내용 추출 성공 (URL 제거 및 띄어쓰기 유지)")
 
-        df = pd.DataFrame(
-            {
-                "검색어": [search],
-                "플랫폼": ["웹페이지(82쿡)"],
-                "게시물 URL": [url],
-                "게시물 제목": [cleaned_title],
-                "게시물 내용": [post_content],
-                "게시물 등록일자": [reg_dt],
-                "계정명": [writer],
-                "수집시간": [datetime.now().strftime("%Y-%m-%d")],
-            }
-        )
+        search_plt_list.append('웹페이지(82쿡)')
+        url_list.append(url)
 
-        save_to_csv(df, f"csv/12.82쿡/{today}/82쿡_{search}.csv")
-        logging.info(f"[상세] 저장 완료: csv/12.82쿡/{today}/82쿡_{search}.csv")
-        return df
+        search_word_list.append(search)
+
+        date_text = soup.find('div', class_='readRight').get_text(strip=True)
+        date_str = date_text.split()[2]
+        date = datetime.strptime(date_str, '%Y-%m-%d')
+        date_list.append(date)
+        logging.info(f"날짜 추출 성공: {date_str}")
+
+        # 채널명
+        writer_list.append(soup.find('div', class_='readLeft').find('a').get_text())
+
+        current_date_list.append(datetime.now().strftime('%Y-%m-%d'))
+
+        # # 이미지/비디오/유튜브 유무 확인
+        # try:
+        #     # 1. scrap_img로 표시된 background-image 확인
+        #     bg_images = content_div.find_all('span', class_='scrap_img')
+        #
+        #     # 2. 일반 이미지 (img 태그) 확인
+        #     images = content_div.find_all('img')
+        #
+        #     # 3. 비디오 확인 (video 태그)
+        #     videos = content_div.find_all('video')
+        #
+        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
+        #     iframes = content_div.find_all('iframe')
+        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
+        #
+        #     # 5. 하이퍼링크로 포함된 모든 URL
+        #     article_links = content_div.find_all('a', href=True)
+        #     link_urls = [
+        #         a['href'] for a in article_links if 'http' in a['href']
+        #     ]
+        #
+        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
+        #     text_content = content_div.get_text()
+        #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
+        #
+        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
+        #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
+        #         image_check_list.append('O')
+        #     else:
+        #         image_check_list.append(' ')
+        #         logging.info(f'이미지 없음: {url}')
+        # except Exception as e:
+        #     logging.error(f"미디어 확인 오류: {e}")
+        #     image_check_list.append(' ')
+
+        main_temp = pd.DataFrame({
+
+            "검색어": search_word_list,
+            "플랫폼": search_plt_list,
+            "게시물 URL": url_list,
+            "게시물 제목": title_list,
+            "게시물 내용": content_list,
+            "게시물 등록일자": date_list,
+            "계정명": writer_list,
+            "수집시간": current_date_list,
+            # "이미지 유무": image_check_list
+        })
+
+        # 데이터 저장
+        save_to_csv(main_temp, f'csv/12.82쿡/{today}/82쿡_{search}.csv')
+        logging.info(f"저장완료: csv/12.82쿡/{today}/82쿡_{search}.csv")
 
     except Exception as e:
-        logging.error(f"[상세] 오류: {e}")
+        logging.error(f"오류 발생: {e}")
         return pd.DataFrame()
 
 
-# ===== 목록 순회 =====
-def cook82_main_crw(searchs, start_date, end_date, stop_event):
-    os.makedirs(f"csv/12.82쿡/{today}", exist_ok=True)
-    logging.info("=" * 55)
-    logging.info("82쿡 크롤링 시작")
-    logging.info("=" * 55)
-
-    # 단일 드라이버로도 충분하지만, 기존 구조 유지가 필요하면 두 개를 사용
+def cook82_main_crw(searchs, start_date, end_date,stop_event):
+    if not os.path.exists(f'csv/12.82쿡/{today}'):
+        os.makedirs(f'csv/12.82쿡/{today}')
+        print(f"폴더 생성 완료: {today}")
+    else:
+        print(f"해당 폴더 존재")
+    logging.info(f"========================================================")
+    logging.info(f"                    82쿡 크롤링 시작")
+    logging.info(f"========================================================")
     wd = setup_driver()
     wd_dp1 = setup_driver()
-
-    try:
-        for search in searchs:
+    for search in searchs:
+        page_num = 1
+        if stop_event.is_set():
+            print("🛑 크롤링 중단됨")
+            break
+        while True:
             if stop_event.is_set():
-                logging.info("🛑 중단 플래그 감지")
                 break
+            try:
+                logging.info(f"크롤링 시작-검색어: {search}")
+                # 제목검색
+                url = f'https://www.82cook.com/entiz/enti.php?bn=15&searchType=search&search1=1&keys={search}&page={page_num}'
+                # 내용검색
+                # url = f'https://www.82cook.com/entiz/enti.php?bn=15&searchType=search&search1=2&keys={search}&page={page_num}'
 
-            page_num = 1
-            while True:
-                if stop_event.is_set():
+                wd_dp1.get(url)
+                WebDriverWait(wd_dp1, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'skin1')))
+
+                time.sleep(1)
+
+                soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
+
+                # 검색결과 리스트
+                tr_tags = soup_dp1.find('div', id='bbs').find('tbody', ).find_all('tr')
+                td_test = soup_dp1.find('div', id='bbs').find('tbody', ).find('tr').find('td', class_='title')
+                if not td_test:
                     break
+                logging.info(f"검색목록 찾음.")
+                for tr in tr_tags:
+                    if stop_event.is_set():
+                        break
+                    after_start_date = False  # 날짜가 시작 날짜 이후인 경우
 
-                try:
-                    list_url = (
-                        f"https://www.82cook.com/entiz/enti.php?"
-                        f"bn=15&searchType=search&search1=1&keys={search}&page={page_num}"
-                    )
-                    logging.info(f"[목록] 접속: {list_url}")
-                    wd_dp1.set_page_load_timeout(15)
-                    wd_dp1.get(list_url)
+                    # 공지사항 제거
+                    if 'noticeList' in tr.get('class', []):
+                        continue
 
-                    # 목록 tr까지 로드될 때까지 대기
                     try:
-                        WebDriverWait(wd_dp1, 15).until(
-                            EC.presence_of_element_located(
-                                (By.CSS_SELECTOR, "#bbs table tbody tr")
-                            )
-                        )
-                    except TimeoutException:
-                        # 결과 없음 페이지일 수 있으므로 검사하고 종료
-                        soup_tmp = BeautifulSoup(wd_dp1.page_source, "html.parser")
-                        if not soup_tmp.select("#bbs table tbody tr td.title a"):
-                            logging.info("[목록] 검색결과 없음 → 종료")
-                            break
+                        date_str = tr.find('td', class_='regdate numbers').text
+                        date = datetime.strptime(date_str, '%Y/%m/%d').date()
+                        logging.info(f"날짜 찾음")
+                    except Exception as e:
+                        logging.error("날짜 오류 발생: {e}")
+                        continue
 
-                    soup_dp1 = BeautifulSoup(wd_dp1.page_source, "html.parser")
-
-                    # 검색결과 행 수집
-                    tr_tags = soup_dp1.select("#bbs table tbody tr")
-                    if not tr_tags:
-                        logging.info("[목록] tr 없음 → 종료")
+                    if date > end_date:
+                        continue
+                    if date < start_date:
+                        after_start_date = True
                         break
 
-                    logging.info("[목록] 검색목록 찾음.")
-                    after_start_date = False
+                    url_str = tr.find('td', class_='title').find('a').get('href')
+                    url = 'https://www.82cook.com/entiz/' + url_str
+                    logging.info(f"url 찾음.")
+                    cook82_crw(wd, url, search)
 
-                    for tr in tr_tags:
-                        if stop_event.is_set():
-                            break
-
-                        # 공지/빈행 제거
-                        if "noticeList" in tr.get("class", []):
-                            continue
-                        title_a = tr.select_one("td.title a")
-                        if not title_a:
-                            continue
-
-                        # 날짜 셀 추출 + 파싱
-                        td_date = tr.select_one("td.regdate.numbers")
-                        if td_date is None:
-                            logging.warning("[목록] 날짜 셀 없음 → 건너뜀")
-                            continue
-                        try:
-                            reg_date = _parse_list_date(td_date)
-                            if not reg_date:
-                                logging.warning(
-                                    f"[목록] 날짜 형식 인식 실패: "
-                                    f"{td_date.get('title','') or td_date.get_text(strip=True)}"
-                                )
-                                continue
-                            logging.info(f"[목록] 날짜 찾음: {reg_date}")
-                        except Exception as e:
-                            logging.error(f"[목록] 날짜 오류: {e}")
-                            continue
-
-                        # 날짜 필터
-                        if reg_date > end_date:
-                            continue
-                        if reg_date < start_date:
-                            after_start_date = True
-                            break
-
-                        # 상세 URL
-                        href = title_a.get("href") or ""
-                        if not href.startswith("read.php"):
-                            # 페이지네이션/광고 링크 등은 스킵
-                            continue
-                        post_url = "https://www.82cook.com/entiz/" + href
-                        logging.info("[목록] 상세 URL 찾음")
-
-                        cook82_crw(wd, post_url, search)
-
-                    if after_start_date:
-                        break
+                if after_start_date:
+                    break
+                else:
                     page_num += 1
 
-                except Exception as e:
-                    logging.error(f"[목록] 오류: {e}")
-                    break
+            except Exception as e:
+                print(f"오류 발생: {e}")
+                logging.error(f"오류 발생: {e}")
+                break
 
-    finally:
-        try:
-            wd.quit()
-        except Exception:
-            pass
-        try:
-            wd_dp1.quit()
-        except Exception:
-            pass
-
-    # ===== 결과 병합 =====
+    wd.quit()
+    wd_dp1.quit()
     if not stop_event.is_set():
-        result_dir = "결과/82쿡"
-        os.makedirs(result_dir, exist_ok=True)
-        try:
-            all_df = pd.concat(
-                [
-                    result_csv_data(search, platform="82쿡", subdir="12.82쿡")
-                    for search in searchs
-                ],
-                ignore_index=True,
-            )
-            out_path = f"{result_dir}/82쿡_raw data_{today}.csv"
-            all_df.to_csv(out_path, encoding="utf-8", index=False)
-            logging.info(f"[결과] 병합 저장 완료: {out_path}")
-        except Exception as e:
-            logging.error(f"[결과] 병합 저장 실패: {e}")
+        result_dir = '결과/82쿡'
+        if not os.path.exists(result_dir):
+            os.makedirs(result_dir)
+
+        all_data = pd.concat([
+            result_csv_data(search, platform='82쿡', subdir='12.82쿡')
+            for search in searchs
+        ])
+
+        all_data.to_csv(f'{result_dir}/82쿡_raw data_{today}.csv', encoding='utf-8', index=False)
