@@ -83,11 +83,18 @@ def fetch_list_urls(search: str, page: int):
             date = datetime.strptime(date_str, '%Y.%m.%d %H:%M').date()
             a = li.find('a', class_='tit_txt')
             href = a.get('href') if a else None
+
+            # 🔹 국제뉴스 갤러리(id=gukjenews)는 크롤링 제외
+            if href and "gall.dcinside.com" in href and "id=gukjenews" in href:
+                logging.info(f"[fetch_list_urls] 국제뉴스 갤러리 제외: {href}")
+                continue
+
             if href:
                 out.append((href, date))
         except Exception:
             continue
     return out
+
 
 
 # -------------------------------
