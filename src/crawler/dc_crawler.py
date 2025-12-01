@@ -96,29 +96,24 @@ def fetch_list_urls(search: str, page: int):
     return out
 
 
-
 # -------------------------------
-# 2) 상세 게시물 수집: Selenium (+ safe_get)
+# 2) 상세 게시물 수집: requests (브라우저 미사용)
 # -------------------------------
 def dc_crw_detail(wd, url: str, search: str):
     """
-    단일 게시물 상세 크롤링 (안전접속 + 요소 미노출 시 스킵)
+    단일 게시물 상세 크롤링 (브라우저 대신 requests 사용)
+    - Selenium wd 인자는 호환성 유지만 위해 받고, 내부에서는 사용하지 않음.
+    - 외부 링크/iframe은 로딩되지 않아서 더 빠르고 가벼움.
     성공 시 DataFrame(1행), 실패/스킵 시 None
     """
-    ok = safe_get(wd, url)
-    if not ok:
-        logging.warning(f"[detail] safe_get 실패: {url}")
-        return None
-
     try:
-        WebDriverWait(wd, 12).until(
-            lambda drv: drv.find_elements(By.CSS_SELECTOR, ".view_content_wrap, .write_div")
-        )
-    except TimeoutException:
-        logging.warning(f"[detail] 본문 컨테이너 미등장: {url}")
+        r = requests.get(url, timeout=12, headers={"User-Agent": UA})
+        r.raise_for_status()
+    except Exception as e:
+        logging.warning(f"[detail] 요청 실패: {url} - {e}")
         return None
 
-    soup = BeautifulSoup(wd.page_source, 'html.parser')
+    soup = BeautifulSoup(r.text, 'html.parser')
 
     # 제목
     title_tag = soup.find('h3', class_='title ub-word')
@@ -151,6 +146,7 @@ def dc_crw_detail(wd, url: str, search: str):
     # 날짜
     try:
         date_str = soup.find('span', class_='gall_date').get_text(strip=True)
+        # 예: 2025.11.26 12:34:56
         post_date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
     except Exception:
         post_date = None
@@ -181,10 +177,10 @@ def dc_crw_detail(wd, url: str, search: str):
 # -------------------------------
 def dc_main_crw(searchs, start_date, end_date, stop_event):
     """
-    - 목록: requests / 상세: Selenium
+    - 목록: requests / 상세: (기존 Selenium 대신) requests
     - 진행상황(progress.json) 저장 → 죽어도 이어서
     - 페이지/게시물 실패는 스킵하고 계속
-    - 키워드 배치마다 드라이버 재생성
+    - 키워드 배치마다 드라이버 재생성 (호환성 유지용, 현재는 상세에 사용 X)
     """
     out_dir = f'csv/22.디시인사이드/{today}'
     os.makedirs(out_dir, exist_ok=True)
@@ -255,7 +251,7 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                         logging.error(f"[{search}] 상세 실패: {e}")
                         fail_streak += 1
 
-                    # 연속 실패 3회 시 드라이버 재기동
+                    # 연속 실패 3회 시 드라이버 재기동 (현재는 거의 의미 없음, 호환성용)
                     if fail_streak >= 3:
                         logging.info("[driver] 실패 누적 → 드라이버 재기동")
                         try:
