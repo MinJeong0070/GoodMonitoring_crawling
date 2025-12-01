@@ -17,48 +17,53 @@ today = datetime.now().strftime("%y%m%d")
 if not os.path.exists(f'log'):
     os.makedirs(f'log')
 
-# 로그 설정
 logging.basicConfig(
-    filename=f'인벤_log_{today}.txt',  # 로그 파일 이름
-    level=logging.INFO,          # 로그 레벨
+    filename=f'인벤_log_{today}.txt',
+    level=logging.INFO,  # 로그 레벨
     format='%(asctime)s - %(levelname)s - %(message)s',  # 로그 형식
-    encoding='utf-8'             # 인코딩 설정
+    encoding='utf-8'  # 인코딩 설정
 )
 
-def inven_crw(wd, url, search):
-    try:
-        logging.info(f"크롤링 시작:{search}: {url}")
+def inven_crw(wd, url,search):
+    # 실행날짜 변수 및 폴더 생성
+    today = datetime.now().strftime("%y%m%d")
+    if not os.path.exists(f'csv/3.인벤/{today}'):
+        os.makedirs(f'csv/3.인벤/{today}')
+        print(f"폴더 생성 완료")
+    else:
+        print(f"해당 폴더 존재")
 
-        wd.get(f'{url}')
+    logging.info(f"크롤링 시작: {url}")
+
+    search_word_list = []
+    search_plt_list = []
+    url_list = []
+    title_list = []  # 게시글 제목
+    content_list = []  # 게시글 내용
+    writer_list = []  # 계정명
+    date_list = []  # 날짜
+    now_date = []  # 추출시간
+
+    try:
+        logging.info(f"접속 시작: {url}")
+        wd.get(url)
+        logging.info(f"접속 성공")
         WebDriverWait(wd, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'articleTitle')))
-        sleep_random_time = random.uniform(2, 4)
+        sleep_random_time = random.uniform(1, 3)
         time.sleep(sleep_random_time)
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
-        writer_list = []
-        title_list = []
-        content_list = []
-        url_list = []
-        search_plt_list = []
-        search_word_list = []
-        date_list = []
-        image_check_list = []
+        logging.info(f"페이지 로딩 후 파싱 완료")
 
-        # 확인용
-        now_date = []
-        # 이미지 유무 추출
-        # content_div = soup.find('div', class_='articleContent')
-        raw_title = soup.find('div', class_='articleTitle').get_text()
-        cleaned_title = clean_title(raw_title)  # 제목 정리 함수 사용
-        # title_strip = ' '.join(clean_title.split())
-        title_list.append(cleaned_title)
-        logging.info(f"제목 추출 성공: {cleaned_title}")
+        # 본문 내용 크롤링 및 전처리
+        content_tag = soup.find('div', class_='articleContent')
+        if not content_tag:
+            logging.warning(f"본문 내용을 찾을 수 없음: {url}")
+            return
 
-        content_tag = soup.find('div', id='powerbbsContent')
-        # 본문 추출 (띄어쓰기 유지)
         content_text = content_tag.get_text(separator=' ', strip=True)
-        # URL 제거
-        content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
+        # 불필요한 공백 제거
+        content_cleaned = re.sub(r'\s+', ' ', content_text).strip()
         content_list.append(content_cleaned)
         logging.info("내용 추출 성공 ")
 
@@ -67,10 +72,20 @@ def inven_crw(wd, url, search):
 
         search_word_list.append(search)
 
-        # 날짜 출력
-        date_str = soup.find('div', class_='articleDate').get_text()
-        date = datetime.strptime(date_str, '%Y-%m-%d')
+        # 날짜 출력 (날짜만 사용)
+        date_str = soup.find('div', class_='articleDate').get_text(strip=True)
+        # 예: "2025-11-14 10:01" → "2025-11-14"만 사용
+        date_only = date_str.split()[0]
+        try:
+            date = datetime.strptime(date_only, '%Y-%m-%d')
+        except ValueError:
+            # 혹시 다른 형식이면, 문자열에서 YYYY-MM-DD 패턴만 추출해서 사용
+            m = re.search(r"\d{4}-\d{2}-\d{2}", date_str)
+            if not m:
+                raise
+            date = datetime.strptime(m.group(0), '%Y-%m-%d')
         date_list.append(date)
+
         # 채널명
         writer_list.append(soup.find('div', class_="articleWriter").get_text().strip())
 
@@ -84,21 +99,18 @@ def inven_crw(wd, url, search):
             "플랫폼": search_plt_list,
             "게시물 URL": url_list,
             "게시물 제목": title_list,
-            '게시물 내용': content_list,
+            "게시물 내용": content_list,
             "게시물 등록일자": date_list,
             "계정명": writer_list,
-            "수집시간": now_date,
-            # "이미지유무": image_check_list
+            "추출시간": now_date
         })
 
         # 데이터 저장
         save_to_csv(main_temp, f'csv/3.인벤/{today}/인벤_{search}.csv')
-        logging.info(f"저장완료: {search}")
-    except Exception as e:
-        logging.error(f"오류 발생: {e}")
-        print(f"오류 발생: {e}")
-        return pd.DataFrame()
+        logging.info(f"csv/3.인벤/{today}/인벤_{search}.csv 저장 완료")
 
+    except Exception as e:
+        logging.error(f"상세 페이지 크롤링 중 오류 발생: {e}")
 
 def inven_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'csv/3.인벤/{today}'):
