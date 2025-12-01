@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from datetime import datetime
 
-from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, clean_title, result_csv_data
 
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
@@ -26,13 +26,35 @@ logging.basicConfig(
 
 
 def scline_crw(wd, url, search):
+    """
+    사커라인 상세 페이지 크롤러
+    - renderer timeout( 'Timed out receiving message from renderer' ) 도 예외 처리하여
+      콘솔에 긴 에러 스택이 찍히지 않도록 처리
+    """
     try:
         logging.info(f"크롤링 시작: {url}")
-        wd.set_page_load_timeout(10)
-        wd.get(f'{url}')
+
+        # 페이지 로드 타임아웃 살짝 여유 있게
+        wd.set_page_load_timeout(20)
+
+        try:
+            wd.get(url)
+        except TimeoutException as e:
+            # 페이지 로드 타임아웃일 경우 현재까지 로드된 내용으로만 시도
+            logging.warning(f"[상세] 페이지 로딩 시간 초과(TimeoutException) → 현재까지 로드된 소스로 진행: {url} / {e}")
+        except WebDriverException as e:
+            # renderer timeout 등 WebDriverException 처리
+            if "Timed out receiving message from renderer" in str(e):
+                logging.warning(f"[상세] renderer 타임아웃 발생, 해당 URL 스킵: {url} / {e}")
+                return None
+            logging.error(f"[상세] 웹드라이버 에러: {url} / {e}")
+            return None
+
         logging.info(f"접속: {url}")
 
-        WebDriverWait(wd, 20).until(EC.presence_of_element_located((By.CLASS_NAME, 'txtBox')))
+        WebDriverWait(wd, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'txtBox'))
+        )
         time.sleep(2)
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
@@ -47,12 +69,19 @@ def scline_crw(wd, url, search):
         image_check_list = []
 
         content_div = soup.find('div', class_='txtBox')
-        raw_title = soup.find('div', class_='titBox').find('h2').get_text()
+        if not content_div:
+            logging.error(f"본문 영역(txtBox)을 찾지 못함: {url}")
+            return None
+
+        tit_box = soup.find('div', class_='titBox')
+        if not tit_box:
+            logging.error(f"제목 영역(titBox)을 찾지 못함: {url}")
+            return None
+
+        raw_title = tit_box.find('h2').get_text()
         cleaned_title = clean_title(raw_title)  # 제목 정리 함수 사용
         title_list.append(cleaned_title)
         logging.info(f"제목 추출 성공: {cleaned_title}")
-
-        content_div = soup.find('div', class_='txtBox')
 
         post_content = content_div.get_text(separator='\n', strip=True)
         post_content = re.sub(r'https?://\S+', '', post_content)
@@ -66,7 +95,12 @@ def scline_crw(wd, url, search):
 
         search_word_list.append(search)
 
-        date_tag = soup.find('div', class_='dataBox').find_all('span')[0]
+        data_box = soup.find('div', class_='dataBox')
+        if not data_box:
+            logging.error(f"날짜 영역(dataBox)을 찾지 못함: {url}")
+            return None
+
+        date_tag = data_box.find_all('span')[0]
         date_match = re.search(r'\d{4}-\d{2}-\d{2}', date_tag.text)
 
         if date_match:
@@ -76,47 +110,17 @@ def scline_crw(wd, url, search):
             logging.info(f"날짜 추출 성공: {date_str}")
         else:
             logging.error('날짜를 찾을 수 없음.')
+            return None
 
         # 채널명
-        writer_list.append(soup.find('div', class_='nameBox').get_text())
-
-        # # 이미지/비디오/유튜브 유무 확인
-        # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
-        #     bg_images = content_div.find_all('span', class_='scrap_img')
-        #
-        #     # 2. 일반 이미지 (img 태그) 확인
-        #     images = content_div.find_all('img')
-        #
-        #     # 3. 비디오 확인 (video 태그)
-        #     videos = content_div.find_all('video')
-        #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
-        #     iframes = content_div.find_all('iframe')
-        #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
-        #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
-        #     article_links = content_div.find_all('a', href=True)
-        #     link_urls = [
-        #         a['href'] for a in article_links if 'http' in a['href']
-        #     ]
-        #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
-        #     text_content = content_div.get_text()
-        #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
-        #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
-        #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
-        #         image_check_list.append('O')
-        #     else:
-        #         image_check_list.append(' ')
-        #         logging.info(f'이미지 없음: {url}')
-        # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
-        #     image_check_list.append(' ')
+        name_box = soup.find('div', class_='nameBox')
+        if name_box:
+            writer_list.append(name_box.get_text())
+        else:
+            writer_list.append("")
+            logging.warning(f"계정명(nameBox)을 찾지 못함: {url}")
 
         main_temp = pd.DataFrame({
-
             "검색어": search_word_list,
             "플랫폼": search_plt_list,
             "게시물 URL": url_list,
@@ -129,109 +133,165 @@ def scline_crw(wd, url, search):
 
         # 데이터 저장
         save_to_csv(main_temp, f'csv/16.사커라인/{today}/사커라인_{search}.csv')
-        logging.info(f"csv/16.사커라인/{today}/사커라인_{search}.csv")
+        logging.info(f"csv/16.사커라인/{today}/사커라인_{search}.csv 저장 완료")
 
     except TimeoutException as e:
-        logging.error(f"페이지 로딩 시간 초과: {e}")
+        logging.error(f"[상세] 페이지 로딩 시간 초과(outer): {url} / {e}")
         return None
 
     except WebDriverException as e:
-        logging.error(f"웹드라이버 에러: {e}")
+        logging.error(f"[상세] 웹드라이버 에러(outer): {url} / {e}")
         return None
 
     except Exception as e:
-        logging.error(f"오류 발생: {e}")
+        logging.error(f"[상세] 기타 오류 발생: {url} / {e}")
         return None
 
 
-def scline_main_crw(searchs, start_date, end_date,stop_event):
+def scline_main_crw(searchs, start_date, end_date, stop_event):
+    """
+    사커라인 목록 페이지 순회 크롤러
+    - 목록 페이지에서도 renderer timeout 에러를 잡아서
+      크롤링이 중단되지 않고 다음 페이지/검색어로 넘어가도록 함
+    """
     if not os.path.exists(f'csv/16.사커라인/{today}'):
         os.makedirs(f'csv/16.사커라인/{today}')
         print(f"폴더 생성 완료: {today}")
     else:
         print(f"해당 폴더 존재")
+
     logging.info(f"========================================================")
     logging.info(f"                    사커라인 크롤링 시작")
     logging.info(f"========================================================")
+
     wd = setup_driver()
     wd_dp1 = setup_driver()
-    for search in searchs:
-        if stop_event.is_set():
-            print("🛑 크롤링 중단됨")
-            break
-        page_num = 0
-        after_start_date = False
-        no_search_flag = True
-        while True:
+
+    try:
+        for search in searchs:
             if stop_event.is_set():
+                print("🛑 크롤링 중단됨")
                 break
-            try:
-                logging.info(f"크롤링 시작-검색어: {search}")
-                url = f'https://soccerline.kr/board?page={page_num}&categoryDepth01=0&searchWindow=&searchType=0&searchText={search}'
 
-                wd_dp1.get(url)
+            page_num = 0
+            after_start_date = False
+            no_search_flag = True
 
-                WebDriverWait(wd_dp1, 20).until(EC.presence_of_element_located((By.CLASS_NAME, 'brdList')))
-                time.sleep(5)
-
-                soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
-
-                # 검색결과 리스트
-                td_tags = soup_dp1.find('div', id='boardListContainer').find_all('tr')[2:]
-                logging.info(f"검색목록 찾음.")
-                no_search_flag = False
-                if not td_tags:
+            while True:
+                if stop_event.is_set():
                     break
+                try:
+                    logging.info(f"크롤링 시작-검색어: {search}, page={page_num}")
+                    url = (
+                        f'https://soccerline.kr/board?page={page_num}'
+                        f'&categoryDepth01=0&searchWindow=&searchType=0&searchText={search}'
+                    )
 
-                for td in td_tags:  # td가 아니라 tr.
-                    if stop_event.is_set():
-                        break
-                    after_start_date = False  # 날짜가 시작 날짜 이후인 경우
-
-                    # 공지사항 확인
-                    # first_td = td.find('td')
-                    # if first_td and '[공지]' in first_td.text:
-                    #     no_search_flag = True
-                    #     continue
-
+                    # 목록 페이지에도 타임아웃 설정
+                    wd_dp1.set_page_load_timeout(20)
                     try:
-                        date_str = td.find_all('td')[3].text
-                        date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                        logging.info(f"날짜 찾음")
-                    except Exception as e:
-                        logging.error("날짜 오류 발생: {e}")
-                        continue
-
-                    if date > end_date:
-                        continue
-
-                    if date < start_date:
-                        after_start_date = True
+                        wd_dp1.get(url)
+                    except TimeoutException as e:
+                        logging.warning(
+                            f"[목록] 페이지 로딩 시간 초과(TimeoutException) → 현재까지 로드된 소스로 진행: {url} / {e}"
+                        )
+                    except WebDriverException as e:
+                        if "Timed out receiving message from renderer" in str(e):
+                            logging.warning(
+                                f"[목록] renderer 타임아웃 발생, 해당 페이지 스킵: {url} / {e}"
+                            )
+                            # 이 페이지는 건너뛰고 다음 페이지로
+                            page_num += 1
+                            continue
+                        logging.error(f"[목록] 웹드라이버 에러: {url} / {e}")
                         break
 
-                    # if date.day <= 7:
-                    url = 'https://soccerline.kr' + td.find('td', class_='desc').find('a').get('href')
-                    logging.info(f"url 찾음.")
-                    scline_crw(wd, url, search)
+                    WebDriverWait(wd_dp1, 20).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, 'brdList'))
+                    )
+                    time.sleep(5)
 
-                if no_search_flag:
+                    soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
+
+                    # 검색결과 리스트
+                    board_container = soup_dp1.find('div', id='boardListContainer')
+                    if not board_container:
+                        logging.info(f"[목록] 검색 결과 컨테이너 없음, 종료: {url}")
+                        break
+
+                    td_tags = board_container.find_all('tr')[2:]
+                    logging.info(f"[목록] 검색목록 찾음 (행 수: {len(td_tags)})")
+                    no_search_flag = False
+
+                    if not td_tags:
+                        break
+
+                    for td in td_tags:  # td가 아니라 tr.
+                        if stop_event.is_set():
+                            break
+                        after_start_date = False  # 날짜가 시작 날짜 이후인 경우
+
+                        try:
+                            date_str = td.find_all('td')[3].text.strip()
+                            date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                            logging.info(f"[목록] 날짜 찾음: {date}")
+                        except Exception as e:
+                            logging.error(f"[목록] 날짜 파싱 오류 발생: {e}")
+                            continue
+
+                        if date > end_date:
+                            # 지정 종료일 이후 글 → 계속 다음 글
+                            continue
+
+                        if date < start_date:
+                            # 시작일보다 이전 글 → 이후 페이지는 더 과거이므로 중단
+                            after_start_date = True
+                            break
+
+                        desc_td = td.find('td', class_='desc')
+                        if not desc_td:
+                            logging.warning("[목록] desc 컬럼을 찾지 못해 URL 추출 실패")
+                            continue
+
+                        a_tag = desc_td.find('a')
+                        if not a_tag or not a_tag.get('href'):
+                            logging.warning("[목록] a 태그/href 없음")
+                            continue
+
+                        detail_url = 'https://soccerline.kr' + a_tag.get('href')
+                        logging.info(f"[목록] 상세 url 찾음: {detail_url}")
+                        scline_crw(wd, detail_url, search)
+
+                    if no_search_flag:
+                        break
+
+                    if len(td_tags) < 25:  # 게시물 25개 미만일시 break
+                        logging.info("[목록] 현재 페이지 게시물 수가 25개 미만이므로 다음 페이지 없이 종료")
+                        break
+
+                    if after_start_date:
+                        logging.info("[목록] 시작일 이전 데이터 도달로 크롤링 종료")
+                        break
+                    else:
+                        page_num += 1
+
+                except Exception as e:
+                    # 여기서는 print 대신 logging만 사용해서 콘솔에 불필요한 에러 스택이 안 찍히도록
+                    logging.error(f"[목록] 루프 내 기타 오류 발생: {e}")
                     break
 
-                if len(td_tags) < 25:  # 게시물 25개 미만일시 break
-                    break
+    finally:
+        # 드라이버 정리
+        try:
+            wd.quit()
+        except Exception:
+            pass
+        try:
+            wd_dp1.quit()
+        except Exception:
+            pass
 
-                if after_start_date:
-                    break
-                else:
-                    page_num += 1
-
-            except Exception as e:
-                print(f"오류 발생: {e}")
-                logging.error(f"오류 발생: {e}")
-                break
-    wd.quit()
-    wd_dp1.quit()
-
+    # 중단 없이 끝까지 돌았을 때만 결과 병합
     if not stop_event.is_set():
         result_dir = '결과/사커라인'
         if not os.path.exists(result_dir):
@@ -242,6 +302,9 @@ def scline_main_crw(searchs, start_date, end_date,stop_event):
             for search in searchs
         ])
 
-        all_data.to_csv(f'{result_dir}/사커라인_raw data_{today}.csv', encoding='utf-8', index=False)
-
-
+        all_data.to_csv(
+            f'{result_dir}/사커라인_raw data_{today}.csv',
+            encoding='utf-8',
+            index=False
+        )
+        logging.info(f"[결과] 병합 파일 저장 완료: {result_dir}/사커라인_raw data_{today}.csv")
