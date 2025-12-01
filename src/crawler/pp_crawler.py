@@ -9,7 +9,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime
 
-from src.etc.utils import setup_driver, save_to_csv, clean_title,result_csv_data
+from src.etc.utils import setup_driver, save_to_csv, clean_title, result_csv_data, safe_get
 # 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
 if not os.path.exists(f'log'):
@@ -27,10 +27,16 @@ logging.basicConfig(
 def pp_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
-        wd.get(f'{url}')
-        logging.info(f"접속: {url}")
-        time.sleep(1)
-        WebDriverWait(wd, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'board-contents')))
+
+        # ✅ 안정화된 요청
+        ok = safe_get(wd, url, retries=3, base_sleep=2)
+        if not ok:
+            logging.warning(f"safe_get 실패: {url}")
+            return
+
+        WebDriverWait(wd, 5).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'board-contents'))
+        )
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
         # 추후 수정하기
@@ -237,5 +243,4 @@ def pp_main_crw(searchs, start_date, end_date, stop_event):
         print(all_data.count())
 
         all_data.to_csv(f'{result_dir}/뽐뿌_raw data_{today}.csv', encoding='utf-8', index=False)
-
 
