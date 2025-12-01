@@ -238,4 +238,3 @@ def ilbe_main_crw(searchs, start_date, end_date,stop_event):
         ])
 
         all_data.to_csv(f'{result_dir}/일간베스트_raw data_{today}.csv', encoding='utf-8', index=False)
-
