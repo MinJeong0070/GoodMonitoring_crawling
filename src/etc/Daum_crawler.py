@@ -1,5 +1,8 @@
 import time
+import os
+import re
 from typing import List, Dict, Tuple
+from datetime import datetime, date
 
 import pandas as pd
 from selenium import webdriver
@@ -18,322 +21,303 @@ from selenium.common.exceptions import (
 
 # ====================== 사용자 설정 ======================
 
-OUTPUT_PATH = r"D:\jupyter\community_site_crawling-main\site crawling\src\etc\Daum_cafe_test.xlsx"
+# 파일이 저장될 폴더 경로
+SAVE_DIR = r"D:\jupyter\community_site_crawling-main\site crawling\src\etc"
 
-QUERIES = ["파킨슨병"]
+# [업데이트] 이미지에서 추출한 15개 검색어 리스트
+QUERIES = [
+    "잠꼬대가 시그널이었다, 알리도 KO패 당한 그 병",
+    "제발 뜨거운 물 참아라, 머리카락 사수하는 소소한 습관",
+    "심장에 좋은 음식 뭐냐고요? 살부터 빼세요",
+    "꿀잠 그립다→\"이젠 꿀잠\"...침대 사용법 알게 된 덕분",
+    "순간 죽을 것 같은 공황 공포, 이럴 땐 펜 들어라",
+    "코스피 폭락? 매달 돈 찍힌다...계좌 지켜줄 ‘방패ETF 12개’",
+    "관세폭탄? 이때다 몰려갔다...고딩 개미도 해외주식 ‘줍줍’",
+    "문 열 기미 보이는 러시아 시장...국내 기업들, 재진출 고심",
+    "투잡러, 어서오세요...'월 400만원' 무인매장의 유혹",
+    "나스닥 빠질 때 22% 올랐다...10년 담아둘 중국 'IT공룡' 등장",
+    "도수치료 받고 실손 못 받는다...윤곽 드러낸 '5세대 실손보험'",
+    "반려견 풀밭 두지 말라...치명률 47% 이 감염병, 주인도 노린다",
+    "봄꽃 극장 이런 적 없었다...매화·목련·벚꽃 동시 상영",
+    "‘벚꽃 성곽’ 품은 동네...동래로 봄마실",
+    "‘단짠’ 조합으로 치팅한 다음날, 부종과 독소 빼려면 '이것'"
+]
 
-MAX_PAGES_PER_QUERY = 1        # 검색 결과 페이지 최대 몇 페이지까지 볼지
-HEADLESS = False               # True 로 두면 브라우저 창 안 뜸
+# 수집할 기간 설정 (YYYY-MM-DD)
+TARGET_START_DATE = date(2025, 4, 1)
+TARGET_END_DATE = date(2025, 11, 30)
+
+MAX_PAGES_PER_QUERY = 100
+HEADLESS = False  # 작업 과정을 보려면 False, 안 보고 속도 높이려면 True
 
 CHROMEDRIVER_PATH = r"C:\chromedriver-win64\chromedriver.exe"
-
-# ========================================================
-
 DAUM_CAFE_HOME_URL = "https://top.cafe.daum.net/"
 
 
-# ---------------- 공통 유틸 ----------------
+# ========================================================
+
+def parse_date_str(date_text: str) -> date:
+    """날짜 문자열 파싱 (예: 25.10.28 -> 2025-10-28)"""
+    if not date_text: return None
+    try:
+        date_text = date_text.strip().rstrip(".")
+        if "." in date_text:
+            parts = date_text.split(".")
+            if len(parts) >= 3:
+                year, month, day = int(parts[0]), int(parts[1]), int(parts[2].split(" ")[0])
+                if year < 100: year += 2000
+                return date(year, month, day)
+    except:
+        pass
+    return None
+
 
 def init_driver(headless: bool = False):
+    """드라이버 초기화 및 속도 최적화 옵션 적용"""
     options = Options()
     if headless:
         options.add_argument("--headless=new")
+
+    # [속도 최적화] 이미지, 알림, 팝업 차단
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_setting_values.popups": 2,
+    }
+    options.add_experimental_option("prefs", prefs)
+
+    # [속도 최적화] 페이지 로드 전략: Eager
+    options.page_load_strategy = 'eager'
+
+    # [로그 최적화]
+    options.add_argument("--log-level=3")
+    options.add_argument("--disable-logging")
+    options.add_experimental_option("excludeSwitches", ["enable-logging"])
+
+    # 차단 방지
+    options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--window-size=1400,900")
 
     service = Service(CHROMEDRIVER_PATH)
     driver = webdriver.Chrome(service=service, options=options)
-    driver.implicitly_wait(5)
+    driver.implicitly_wait(2)
     return driver
 
 
-def safe_click(driver, locator, timeout: int = 10) -> bool:
+def safe_click(driver, locator, timeout: int = 5) -> bool:
     try:
-        elem = WebDriverWait(driver, timeout).until(
-            EC.element_to_be_clickable(locator)
-        )
+        elem = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(locator))
         elem.click()
-        time.sleep(1)
+        time.sleep(0.3)
         return True
-    except (TimeoutException, WebDriverException):
+    except:
         return False
 
 
-# ------------- 검색 페이지 조작 -------------
+# ------------- 페이지 조작 로직 -------------
 
 def open_search_page(driver):
     driver.get(DAUM_CAFE_HOME_URL)
-    time.sleep(2)
+    try:
+        WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "q")))
+    except:
+        time.sleep(1)
 
 
 def set_search_query_and_go(driver, query: str):
-    """
-    검색창: input#q.tf_keyword.inp_search
-    """
-    wait = WebDriverWait(driver, 10)
-    search_input = wait.until(
-        EC.presence_of_element_located((By.ID, "q"))
-    )
-    search_input.clear()
-    search_input.send_keys(query)
-    search_input.send_keys(Keys.ENTER)
-    time.sleep(2)
-
-
-def select_cafe_article_and_sort_recent(driver):
-    """
-    '카페글' 탭 선택 후 정렬 '최신' 선택
-    (이미 선택되어 있으면 실패해도 무시)
-    """
-    safe_click(driver, (By.LINK_TEXT, "카페글"), timeout=5)
-    safe_click(driver, (By.LINK_TEXT, "최신"), timeout=5)
+    try:
+        wait = WebDriverWait(driver, 5)
+        search_input = wait.until(EC.presence_of_element_located((By.ID, "q")))
+        search_input.clear()
+        search_input.send_keys(query)
+        search_input.send_keys(Keys.ENTER)
+        time.sleep(1)
+    except:
+        print("[ERR] 검색창 못찾음")
 
 
 def get_article_items(driver) -> List:
-    """
-    검색 결과 페이지에서 게시글 li 요소 리스트 가져오기.
-
-    ul.list_scafe li 를 우선 사용.
-    """
     selectors = ["ul.list_scafe li", "ul#articleContentWrap li"]
-
     for sel in selectors:
         items = driver.find_elements(By.CSS_SELECTOR, sel)
-        if items:
-            print(f"[INFO]  selector '{sel}' 에서 {len(items)}개 발견")
-            return items
-
-    print("[WARN]  게시글 리스트를 찾지 못했습니다.")
+        if items: return items
     return []
 
 
 def parse_list_item(li_elem) -> Dict:
-    """
-    검색 결과 한 줄에서 제목/URL만 읽는다.
-    날짜는 상세 페이지에서 다시 가져올 것.
-    """
+    data = {"title": "", "url": "", "date_str": "", "author_list": ""}
     try:
-        a_title = li_elem.find_element(By.CSS_SELECTOR, "a.link_tit")
-        title = a_title.text.strip()
-        url = a_title.get_attribute("href")
-    except NoSuchElementException:
-        title = ""
-        url = ""
-
-    return {
-        "title": title,
-        "url": url,
-    }
-
-
-# ------------- 상세 페이지 크롤링 -------------
-
-def fetch_post_detail(driver, url: str) -> Tuple[str, str, str]:
-    """
-    상세 페이지에서 작성자, 날짜, 전체 내용을 가져온다.
-
-    - 작성자:  #primaryContent .cover_info a.link_item
-    - 날짜:    #primaryContent .info_desc span.txt_item 들 중
-              '.'와 ':'가 동시에 들어간 텍스트 (예: 25.11.28 02:42)
-    - 본문:    div#user_contents
-              (없으면 iframe들 내부에서 다시 탐색)
-    """
-    current_window = driver.current_window_handle
-
-    author = ""
-    post_date = ""
-    content = ""
+        tit = li_elem.find_element(By.CSS_SELECTOR, "a.link_tit")
+        data["title"] = tit.text.strip()
+        data["url"] = tit.get_attribute("href")
+    except:
+        pass
 
     try:
-        # 새 탭으로 열기
+        data["date_str"] = li_elem.find_element(By.CSS_SELECTOR, "span.info_scafe").text.strip()
+    except:
+        pass
+
+    try:
+        data["author_list"] = li_elem.find_element(By.CSS_SELECTOR, "a.link_cafe").text.strip()
+    except:
+        pass
+
+    return data
+
+
+def fetch_post_content_detail(driver, url: str) -> Tuple[str, str]:
+    current_handle = driver.current_window_handle
+    content, detail_author = "", ""
+
+    try:
         driver.execute_script("window.open(arguments[0]);", url)
         driver.switch_to.window(driver.window_handles[-1])
+        wait = WebDriverWait(driver, 3)
 
-        wait = WebDriverWait(driver, 10)
-
-        # primaryContent 등장까지 대기 (상단 영역)
         try:
-            wait.until(
-                EC.presence_of_element_located((By.ID, "primaryContent"))
-            )
-        except TimeoutException:
-            # 느린 경우를 대비해서 약간 더 대기
-            time.sleep(2)
+            wait.until(EC.presence_of_element_located((By.ID, "primaryContent")))
+        except:
+            pass
 
-        # ----- 작성자 -----
         try:
-            author_el = driver.find_element(
-                By.CSS_SELECTOR, "#primaryContent .cover_info a.link_item"
-            )
-            author = author_el.text.strip()
-        except NoSuchElementException:
-            author = ""
+            detail_author = driver.find_element(By.CSS_SELECTOR, "#primaryContent .cover_info a.link_item").text.strip()
+        except:
+            pass
 
-        # ----- 날짜 -----
-        # span.txt_item 들 중에서 '.'와 ':'가 같이 들어간 텍스트를 우선적으로 선택
         try:
-            info_desc = driver.find_element(
-                By.CSS_SELECTOR, "#primaryContent .info_desc"
-            )
-            txt_items = info_desc.find_elements(By.CSS_SELECTOR, "span.txt_item")
-            for span in txt_items:
-                t = span.text.strip()
-                if "." in t and ":" in t:  # 예: 25.11.28 02:42
-                    post_date = t
-                    break
-            if not post_date and txt_items:
-                # 혹시 위 조건에 안 걸려도 일단 첫 번째 값이라도 저장
-                post_date = txt_items[0].text.strip()
-        except NoSuchElementException:
-            post_date = ""
+            content = driver.find_element(By.ID, "user_contents").text.strip()
+        except:
+            pass
 
-        # ----- 본문 (1차: 현재 문서에서 바로 시도) -----
-        try:
-            content_el = driver.find_element(By.ID, "user_contents")
-            content = content_el.text.strip()
-        except NoSuchElementException:
-            content = ""
-
-        # ----- 본문 (2차: iframe 내부 탐색) -----
         if not content:
-            try:
-                frames = driver.find_elements(By.TAG_NAME, "iframe")
-            except NoSuchElementException:
-                frames = []
-
-            for frame in frames:
+            frames = driver.find_elements(By.TAG_NAME, "iframe")
+            for frame in frames[:2]:
                 try:
                     driver.switch_to.frame(frame)
-                    try:
-                        content_el = driver.find_element(By.ID, "user_contents")
-                        content = content_el.text.strip()
-                        driver.switch_to.default_content()
-                        break
-                    except NoSuchElementException:
-                        driver.switch_to.default_content()
-                        continue
-                except WebDriverException:
+                    content = driver.find_element(By.ID, "user_contents").text.strip()
                     driver.switch_to.default_content()
-                    continue
+                    if content: break
+                except:
+                    driver.switch_to.default_content()
 
-        return author, post_date, content
+        return content, detail_author
 
+    except:
+        return "", ""
     finally:
-        # 탭 닫고 원래 검색결과 탭으로 복귀
         try:
-            driver.close()
-        except WebDriverException:
-            pass
-        try:
-            driver.switch_to.window(current_window)
-        except WebDriverException:
+            if len(driver.window_handles) > 1:
+                driver.close()
+            driver.switch_to.window(current_handle)
+        except:
             pass
 
 
-
-
-
-def go_next_page_by_number(driver, current_page: int) -> bool:
-    """
-    하단 페이지네이션에서 다음 페이지 번호 클릭 (1→2, 2→3 ...)
-    """
-    next_page = current_page + 1
-    xpath = f"//div[@class='paging_scafe']//a[normalize-space(text())='{next_page}']"
-    return safe_click(driver, (By.XPATH, xpath), timeout=5)
-
-
-# ------------- 메인 크롤러 (단일 검색어) -------------
-
-def crawl_daum_cafe_for_query(
-    driver,
-    query_text: str,
-    max_pages: int = 3,
-) -> List[Dict]:
-    """
-    단일 검색어에 대해:
-    - 카페글 + 최신 정렬
-    - 각 게시글 상세 페이지까지 들어가서
-      → 제목, 날짜, 작성자, 내용, URL 수집
-    """
-    print(f"[INFO] 검색어 크롤링 시작: {query_text}")
+def crawl_query(driver, query: str, max_pages: int) -> List[Dict]:
+    print(f"\n{'=' * 60}\n[INFO] '{query}' 크롤링 시작\n{'=' * 60}")
 
     open_search_page(driver)
-    set_search_query_and_go(driver, query_text)
-    select_cafe_article_and_sort_recent(driver)
+    set_search_query_and_go(driver, query)
 
-    all_rows: List[Dict] = []
-    current_page = 1
+    safe_click(driver, (By.LINK_TEXT, "카페글"))
+    safe_click(driver, (By.LINK_TEXT, "최신"))
 
-    while current_page <= max_pages:
-        print(f"[INFO]  - 페이지 {current_page} 처리 중...")
+    results = []
+    page = 1
+    finished = False
 
+    while page <= max_pages and not finished:
+        print(f" >> [Page {page}] 스캔 중...", end="\r")
         items = get_article_items(driver)
         if not items:
-            print("[INFO]    게시글이 없습니다. 종료.")
+            print("\n    게시글이 없습니다. 종료.")
             break
 
-        for li in items:
+        for item in items:
             try:
-                row = parse_list_item(li)
+                info = parse_list_item(item)
+                if not info['url']: continue
+
+                d_obj = parse_date_str(info['date_str'])
+                if d_obj:
+                    if d_obj > TARGET_END_DATE: continue
+                    if d_obj < TARGET_START_DATE:
+                        print(f"\n    [STOP] 날짜 범위 경과 ({info['date_str']}). 수집 종료.")
+                        finished = True
+                        break
+
+                content, d_author = fetch_post_content_detail(driver, info['url'])
+                final_author = d_author if d_author else info['author_list']
+
+                row = {
+                    "검색어": query,
+                    "제목": info['title'],
+                    "날짜": info['date_str'],
+                    "작성자": final_author,
+                    "내용": content,
+                    "URL": info['url']
+                }
+                results.append(row)
+
+                print(f"\n  [#{len(results)}] {info['date_str']} | {info['title'][:30]}...")
+                print(f"   • 작성자: {final_author}")
+                print(f"   • URL: {info['url']}")
+                print("  " + "-" * 50)
+
             except StaleElementReferenceException:
                 continue
-
-            url = row.get("url", "")
-            if not url:
+            except Exception:
                 continue
 
-            author, post_date, content = fetch_post_detail(driver, url)
+        if not finished:
+            next_btn = f"//div[@class='paging_scafe']//a[normalize-space(text())='{page + 1}']"
+            if not safe_click(driver, (By.XPATH, next_btn), timeout=3):
+                print("\n    마지막 페이지입니다.")
+                break
+            page += 1
+            time.sleep(0.5)
 
-            all_rows.append(
-                {
-                    "검색어_쿼리": query_text,
-                    "게시글_제목": row.get("title", ""),
-                    "게시글_날짜": post_date,
-                    "게시글_작성자": author,
-                    "게시글_내용": content,
-                    "게시글_URL": url,
-                }
-            )
-
-        print(f"[INFO]    현재 검색어 누적 수집: {len(all_rows)}건")
-
-        if not go_next_page_by_number(driver, current_page):
-            print("[INFO]    다음 페이지가 없습니다. 종료.")
-            break
-
-        current_page += 1
-        time.sleep(1)
-
-    print(f"[INFO] 검색어 크롤링 완료: {query_text} (총 {len(all_rows)}건)")
-    return all_rows
+    return results
 
 
-# ------------- 전체 실행 -------------
+# ------------- 실행부 -------------
 
 def main():
-    driver = init_driver(headless=HEADLESS)
+    if not os.path.exists(SAVE_DIR): os.makedirs(SAVE_DIR)
 
-    try:
-        all_results: List[Dict] = []
+    for query in QUERIES:
+        driver = None
+        try:
+            driver = init_driver(headless=HEADLESS)
+            data = crawl_query(driver, query, MAX_PAGES_PER_QUERY)
 
-        for q in QUERIES:
-            rows = crawl_daum_cafe_for_query(
-                driver,
-                query_text=q,
-                max_pages=MAX_PAGES_PER_QUERY,
-            )
-            all_results.extend(rows)
+            if data:
+                # 파일명 특수문자 및 길이 안전 처리
+                safe_q = re.sub(r'[\\/*?:"<>|]', "_", query)
+                if len(safe_q) > 30:  # 파일명이 너무 길면 잘라서 저장
+                    safe_q = safe_q[:30]
 
-        if all_results:
-            df = pd.DataFrame(all_results)
-            df.to_excel(OUTPUT_PATH, index=False)
-            print(f"\n[INFO] 최종 {len(df)}건을 엑셀로 저장했습니다: {OUTPUT_PATH}")
-        else:
-            print("\n[INFO] 수집된 데이터가 없습니다.")
+                fname = f"Daum_{safe_q}_{datetime.now().strftime('%y%m%d')}.xlsx"
+                fpath = os.path.join(SAVE_DIR, fname)
 
-    finally:
-        driver.quit()
+                df = pd.DataFrame(data)
+                df.to_excel(fpath, index=False, engine='openpyxl')
+                print(f"   >>> [저장 완료] {fname}")
+            else:
+                print(f"   >>> [알림] 데이터 없음: {query}")
+
+        except Exception as e:
+            print(f"\n[CRITICAL] '{query}' 처리 중 에러: {e}")
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+            print("   >>> 브라우저 리셋...\n")
 
 
 if __name__ == "__main__":
