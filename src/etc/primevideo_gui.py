@@ -1,4 +1,4 @@
-# run_gui.py
+# primevideo_gui.py
 # -------------------------------
 # primevideo_crawler.py의 함수를 import하여
 # GUI(그래픽 인터페이스)로 실행하는 스크립트
