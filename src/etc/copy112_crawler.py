@@ -45,6 +45,18 @@ def _wait_table_ready(driver, timeout=10):
     )
     time.sleep(0.3)
 
+    # ① _wait_table_ready 직후에
+    rows = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+    print("[DEBUG] rows(result-list):", len(rows))
+    if len(rows) == 0:
+        rows2 = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+        print("[DEBUG] rows(generic):", len(rows2))
+
+    # ② 페이지 루프에서 행 읽기 직전
+    rows = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
+    if not rows:
+        rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+
 
 def _parse_row_date(row):
     """tr에서 신고일자를 date로 파싱 (실패시 None)"""
