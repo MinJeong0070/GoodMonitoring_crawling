@@ -35,6 +35,7 @@ from src.crawler.ygosu_crawler import ygosu_main_crw
 from src.crawler.etoland_crawler import etoland_main_crw
 from src.crawler.serieamania_crawler import serieamania_main_crw
 from src.crawler.fb_crawler import fb_main_crw
+from src.crawler.instagram_crawler import instagram_main_crw
 # from src.crawler.kbdio_crawler import kbdio_main_crw
 # from src.crawler.kbdiom_crawler import kbdiom_main_crw
 from src.processing.process_file import process_file
@@ -48,8 +49,8 @@ searchs = pd_search['검색어명']
 stop_event = Event()
 
 # 기간 설정
-start_date = datetime.strptime('2025-8-1', '%Y-%m-%d').date()
-end_date = datetime.strptime('2025-8-31', '%Y-%m-%d').date()
+start_date = datetime.strptime('2025-11-1', '%Y-%m-%d').date()
+end_date = datetime.strptime('2025-11-30', '%Y-%m-%d').date()
 
 # 사이트별 함수 매핑
 crawlers = {
@@ -59,9 +60,9 @@ crawlers = {
     "루리웹": rw_main_crw,
     "오늘의유머": todayhumor_main_crw,
     "네이트판": paan_main_crw,
-    "인스티즈": instiz_main_crw,
+    # "인스티즈": instiz_main_crw,
     "보배드림" : bobaedream_main_crw,
-    "아카라이브": arca_main_crw,
+    # "아카라이브": arca_main_crw,
     "일간베스트": ilbe_main_crw,
     "웃긴대학": humoruniv_main_crw,
     "82쿡": cook82_main_crw,
@@ -71,16 +72,17 @@ crawlers = {
     "사커라인": scline_main_crw,
     "동사로마닷컴":dongsaroma_main_crw,
     "포모스": fomos_main_crw,
-    "짱공유닷컴":jjang0u_main_crw,
+    # "짱공유닷컴":jjang0u_main_crw,
     "블라인드": blind_main_crw,
     "엠엘비파크":mlb_main_crw,
     "디시인사이드":dc_main_crw,
     "에펨코리아": fm_main_crw,
-    "더쿠":dq_main_crw,
-    "와이고수":ygosu_main_crw,
-    "이토랜드":etoland_main_crw,
+    # "더쿠":dq_main_crw,
+    # "와이고수":ygosu_main_crw,
+    # "이토랜드":etoland_main_crw,
     "세리에매니아":serieamania_main_crw,
-    "페이스북":fb_main_crw
+    "페이스북":fb_main_crw,
+    "인스타그램":instagram_main_crw
     # "케이비디오":kbdio_main_crw,
     # "티스토리 케이비디오":kbdiom_main_crw
 
