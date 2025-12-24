@@ -165,10 +165,18 @@ def fb_main_crw(searchs, start_d: date, end_d: date, stop_event):
     max_pages = 8
     profile_dir = os.getenv("GOOGLE_CHROME_PROFILE_DIR")
 
+    USE_INCOGNITO = False  # ← True면 시크릿 모드, False면 일반 프로필 모드
+
     options = uc.ChromeOptions()
-    if profile_dir:
-        options.add_argument(f"--user-data-dir={profile_dir}")
     options.add_argument("--lang=ko-KR")
+
+    if USE_INCOGNITO:
+        options.add_argument("--incognito")
+        print("[MODE] 시크릿 모드로 실행됩니다.")
+    else:
+        if profile_dir:
+            options.add_argument(f"--user-data-dir={profile_dir}")
+            print(f"[MODE] 일반 모드 (프로필 경로 사용): {profile_dir}")
 
     driver = uc.Chrome(options=options)
 
