@@ -27,54 +27,94 @@ def _maybe_accept_alert(driver) -> bool:
     except Exception:
         return False
 
-def setup_driver(headless: bool = False, user_agent: str | None = None):
-    logging.info("웹드라이버 시작")
+def setup_driver(headless: bool = False,
+                 user_agent: str | None = None,
+                 user_data_dir: str | None = None,
+                 window_size: str = "1550,1000") -> uc.Chrome:
+    """
+    HTTPConnectionPool 타임아웃 방지를 위한 최적 안정 세팅
+    """
+
+    logging.info("🔧 Chrome 드라이버 초기화 시작")
+
+    # Chrome 옵션
     options = uc.ChromeOptions()
 
-    # ✅ UA (반드시 --user-agent= 로 전달)
+    # 사용자 에이전트
     ua = user_agent or (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/128.0.0.0 Safari/537.36"
+        "Chrome/129.0.0.0 Safari/537.36"
     )
     options.add_argument(f"--user-agent={ua}")
 
-    # ✅ 로딩 전략: DOMContentLoaded 시점에 반환 → 속도 개선
-    options.page_load_strategy = "eager"
-
-    # ✅ 불필요 리소스 차단(이미지/미디어/알림 등) → 타임아웃·메모리 사용 감소
-    options.add_experimental_option(
-        "prefs",
-        {
-            "profile.managed_default_content_settings.images": 2,
-            "profile.managed_default_content_settings.plugins": 2,
-            "profile.managed_default_content_settings.popups": 2,
-            "profile.managed_default_content_settings.geolocation": 2,
-            "profile.managed_default_content_settings.notifications": 2,
-            "profile.managed_default_content_settings.media_stream": 2,
-            "profile.managed_default_content_settings.stylesheets": 2,
-        },
-    )
-
-    # ✅ 안정 옵션
-    options.add_argument("--disable-popup-blocking")
+    # 성능 및 안정화 옵션
+    options.add_argument(f"--window-size={window_size}")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-sync")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--log-level=3")
+    options.add_argument("--silent")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--ignore-ssl-errors")
     options.add_argument("--incognito")
-    options.add_argument("--disable-blink-features=AutomationControlled")
 
+    # 헤드리스 모드
     if headless:
         options.add_argument("--headless=new")
 
-    # ❌ 사이트 동작에 영향 큰 옵션은 제거합니다.
-    # options.add_argument("--disable-javascript")            # ← 제거
-    # options.add_argument("--blink-settings=imagesEnabled=false")  # ← prefs로 대체
+    # 불필요 리소스 차단
+    options.add_experimental_option("prefs", {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.managed_default_content_settings.stylesheets": 2,
+        "profile.managed_default_content_settings.cookies": 2,
+        "profile.managed_default_content_settings.javascript": 1,
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+    })
 
-    # ✅ CDP 이벤트는 비활성화 (일부 버전에서 columnNumber 관련 크래시 회피)
-    driver = uc.Chrome(options=options, enable_cdp_events=False)
-    driver.set_page_load_timeout(15)
+    # 페이지 로딩 전략: DOMContentLoaded까지만
+    options.page_load_strategy = "eager"
+
+    # ✅ 핵심: 내부 localhost 통신 지연 방지를 위해 subprocess 완전 비활성
+    #    (이 설정이 있어야 HTTPConnectionPool 오류 대부분 사라집니다)
+    try:
+        driver = uc.Chrome(
+            options=options,
+            enable_cdp_events=False,
+            use_subprocess=True,  # ⚠️ False에서 True로 변경 테스트 (v143 버그 회피 시도)
+            headless=headless,
+            version_main=143  # ⚠️ 강제로 메이저 버전 지정 (설치된 크롬이 143이므로)
+        )
+    except Exception as e:
+        logging.error(f"드라이버 초기화 실패: {e}")
+        # 실패 시 subprocess=False로 재시도 (기존 설정)
+        driver = uc.Chrome(
+            options=options,
+            enable_cdp_events=False,
+            use_subprocess=False,
+            headless=headless,
+            version_main=143
+        )
+
+    # 기본 타임아웃
+    driver.set_page_load_timeout(10)
+    driver.set_script_timeout(10)
+    driver.implicitly_wait(0)
+
+    logging.info("✅ Chrome 드라이버 초기화 완료")
     return driver
+
+
 
 
 def result_csv_data(search, platform, subdir, base_path='csv'):
