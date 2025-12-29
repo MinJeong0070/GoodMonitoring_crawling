@@ -5,7 +5,6 @@ import pandas as pd
 from datetime import datetime
 import undetected_chromedriver as uc
 
-# (추가) 재시도/슬립/체크포인트용 import
 import time
 import random
 import json
@@ -13,7 +12,6 @@ from threading import Lock
 from selenium.common.exceptions import TimeoutException, WebDriverException, UnexpectedAlertPresentException
 from selenium.webdriver.common.by import By
 
-# 실행날짜 변수 및 폴더 생성
 today = datetime.now().strftime("%y%m%d")
 os.makedirs('log', exist_ok=True)
 
@@ -48,7 +46,6 @@ def setup_driver(headless: bool = False,
     )
     options.add_argument(f"--user-agent={ua}")
 
-    # 성능 및 안정화 옵션
     options.add_argument(f"--window-size={window_size}")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -67,11 +64,9 @@ def setup_driver(headless: bool = False,
     options.add_argument("--ignore-ssl-errors")
     options.add_argument("--incognito")
 
-    # 헤드리스 모드
     if headless:
         options.add_argument("--headless=new")
 
-    # 불필요 리소스 차단
     options.add_experimental_option("prefs", {
         "profile.managed_default_content_settings.images": 2,
         "profile.default_content_setting_values.notifications": 2,
@@ -97,7 +92,6 @@ def setup_driver(headless: bool = False,
         )
     except Exception as e:
         logging.error(f"드라이버 초기화 실패: {e}")
-        # 실패 시 subprocess=False로 재시도 (기존 설정)
         driver = uc.Chrome(
             options=options,
             enable_cdp_events=False,
@@ -129,7 +123,6 @@ def result_csv_data(search, platform, subdir, base_path='csv'):
         return pd.DataFrame()
 
 
-# csv 저장(추가 시 header=False)
 def save_to_csv(df, file_name):
     try:
         if os.path.isfile(file_name):
@@ -154,7 +147,6 @@ def clean_title(title):
 
 
 # ===========================
-# 안정화용 유틸 (통합 추가)
 # ===========================
 
 def human_sleep(short_min=1.5, short_max=3.0, long_prob=0.1, long_min=6, long_max=10):
@@ -180,7 +172,6 @@ def safe_get(driver, url, retries=3, base_sleep=2):
             # 즉시 알럿 처리
             _maybe_accept_alert(driver)
 
-            # 간단 배너/동의 버튼 처리(있을 때만)
             try:
                 for btn in driver.find_elements(By.CSS_SELECTOR, "button, a"):
                     t = (btn.text or "").strip()
@@ -215,7 +206,6 @@ def safe_get(driver, url, retries=3, base_sleep=2):
     return False
 
 
-# 진행상황 체크포인트 (이어하기)
 _PROGRESS_PATH = "progress.json"
 _progress_lock = Lock()
 

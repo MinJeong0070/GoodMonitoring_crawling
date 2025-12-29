@@ -41,18 +41,18 @@ from src.crawler.instagram_crawler import instagram_main_crw
 from src.processing.process_file import process_file
 from tkinter import filedialog
 
-# 검색어 추출
+# 검색어 엑셀 파일에서 검색어 목록 로드
 pd_search = pd.read_excel("(언진) 2025 매체사 검색어 목록.xlsx", sheet_name='검색어 목록')
 searchs = pd_search['검색어명']
 
-# 전역 중단 플래그
+# 크롤링 중단 신호를 위한 전역 이벤트 객체
 stop_event = Event()
 
-# 기간 설정
+# 기본 기간 설정 (수정 가능)
 start_date = datetime.strptime('2025-11-1', '%Y-%m-%d').date()
 end_date = datetime.strptime('2025-11-30', '%Y-%m-%d').date()
 
-# 사이트별 함수 매핑
+# 사이트명과 해당 사이트의 크롤러 함수를 매핑
 crawlers = {
     "뽐뿌": pp_main_crw,
     "클리앙": clien_main_crw,
@@ -60,56 +60,62 @@ crawlers = {
     "루리웹": rw_main_crw,
     "오늘의유머": todayhumor_main_crw,
     "네이트판": paan_main_crw,
-    # "인스티즈": instiz_main_crw,
-    "보배드림" : bobaedream_main_crw,
-    # "아카라이브": arca_main_crw,
+    # "인스티즈": instiz_main_crw,  # 사용 안 함
+    "보배드림": bobaedream_main_crw,
+    # "아카라이브": arca_main_crw,  # 사용 안 함
     "일간베스트": ilbe_main_crw,
     "웃긴대학": humoruniv_main_crw,
     "82쿡": cook82_main_crw,
     "오르비": orbi_main_crw,
     "개드립": dogdrip_main_crw,
-    "DVD프라임":dp_main_crw,
+    "DVD프라임": dp_main_crw,
     "사커라인": scline_main_crw,
-    "동사로마닷컴":dongsaroma_main_crw,
+    "동사로마닷컴": dongsaroma_main_crw,
     "포모스": fomos_main_crw,
-    # "짱공유닷컴":jjang0u_main_crw,
+    # "짱공유닷컴": jjang0u_main_crw,  # 비활성화
     "블라인드": blind_main_crw,
-    "엠엘비파크":mlb_main_crw,
-    "디시인사이드":dc_main_crw,
+    "엠엘비파크": mlb_main_crw,
+    "디시인사이드": dc_main_crw,
     "에펨코리아": fm_main_crw,
-    # "더쿠":dq_main_crw,
-    # "와이고수":ygosu_main_crw,
-    # "이토랜드":etoland_main_crw,
-    "세리에매니아":serieamania_main_crw,
-    "페이스북":fb_main_crw,
-    "인스타그램":instagram_main_crw
-    # "케이비디오":kbdio_main_crw,
-    # "티스토리 케이비디오":kbdiom_main_crw
-
+    # "더쿠": dq_main_crw,
+    # "와이고수": ygosu_main_crw,
+    # "이토랜드": etoland_main_crw,
+    "세리에매니아": serieamania_main_crw,
+    "페이스북": fb_main_crw,
+    "인스타그램": instagram_main_crw
+    # "케이비디오": kbdio_main_crw,
+    # "티스토리 케이비디오": kbdiom_main_crw
 }
 
 class TextRedirector:
+    """tk.Text 위젯에 print 출력을 리디렉션하기 위한 클래스"""
     def __init__(self, widget):
         self.widget = widget
+
     def write(self, msg):
         self.widget.after(0, self._write_gui, msg)
+
     def _write_gui(self, msg):
         self.widget.config(state='normal')
         self.widget.insert(tk.END, msg)
         self.widget.see(tk.END)
         self.widget.config(state='disabled')
-    def flush(self): pass
+
+    def flush(self):
+        pass  # 버퍼 비우기용 (필수 구현)
 
 def run_crawler(gui):
-    stop_event.clear()  # 플래그 초기화
+    """크롤링 실행 버튼 클릭 시 비동기로 스레드 실행"""
+    stop_event.clear()
     threading.Thread(target=lambda: crawler_threaded(gui)).start()
 
-
 def stop_crawler(gui):
-    stop_event.set()  # 플래그 설정
+    """중단 이벤트 트리거"""
+    stop_event.set()
     gui.status_label.config(text="⛔ 크롤링 중단 요청됨")
 
 def crawler_threaded(gui):
+    """크롤링 + 전처리까지 수행하는 메인 함수"""
     site = gui.site_combo.get()
     start_str = gui.start_entry.get()
     end_str = gui.end_entry.get()
@@ -129,18 +135,19 @@ def crawler_threaded(gui):
         gui.status_label.config(text=f"[{site}] 크롤링 중...")
         crw_func = crawlers[site]
         crw_func(searchs, start_date, end_date, stop_event)
+
         if stop_event.is_set():
-            return
+            return  # 중단 요청 시 이후 전처리 생략
+
         gui.status_label.config(text="전처리 중...")
         today = datetime.now().strftime("%y%m%d")
+
         if not os.path.exists(f'결과/1.전처리'):
             os.makedirs(f'결과/1.전처리')
 
         input_path = f"결과/{site}/{site}_raw data_{today}.csv"
         if is_empty_csv(input_path):
-            gui.status_label.config(
-                text="ℹ️ 크롤링 결과가 0건이어서 전처리할 데이터가 없습니다."
-            )
+            gui.status_label.config(text="ℹ️ 크롤링 결과가 0건이어서 전처리할 데이터가 없습니다.")
             print(f"[INFO] 전처리 스킵(빈 파일): {input_path}")
             return
 
@@ -157,34 +164,32 @@ def crawler_threaded(gui):
 
 def is_empty_csv(path: str) -> bool:
     """
-    True  -> 전처리 불가(빈 파일/헤더 없음)
-    False -> 전처리 시도 가능
+    CSV 파일이 비어있거나, 헤더도 없는 경우 True 반환
+    - 처리할 필요 없음
+    - 유효성 체크 필수
     """
     try:
         if not os.path.exists(path):
             return True
         if os.path.getsize(path) == 0:
             return True
-        # 헤더 한 줄만 슬쩍 확인 (완전 공백/줄바꿈만 있는 경우)
         with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             first = f.readline().strip()
         if first == "":
             return True
         return False
     except Exception:
-        # 점검 실패 시엔 안전하게 전처리 중단 쪽으로
+        # 오류 발생 시 전처리 방지 목적으로 True 반환
         return True
 
-
-# 이미 생성된 row CSV를 선택해서 단독 전처리 실행하는 함수
 def run_preprocess(gui):
     """
-    - 파일 선택 다이얼로그로 raw CSV를 고른 뒤
-    - 끝 날짜 입력값의 연/월을 전처리 파라미터로 사용
-    - 파일명에서 {사이트}_raw data_{날짜}.csv 규칙을 이용해 사이트명 자동 추출(실패 시 GUI 선택값 사용)
+    수동 CSV 전처리 실행 함수
+    - GUI에서 끝 날짜 받아 연월 추출
+    - 파일명에서 사이트 추론 시도 (실패 시 GUI 값 사용)
+    - TODO: 사이트명 추론 정확도 개선 필요
     """
     try:
-        # 끝 날짜에서 연/월 사용
         end_str = gui.end_entry.get()
         try:
             end_date = datetime.strptime(end_str, "%Y-%m-%d").date()
@@ -192,7 +197,6 @@ def run_preprocess(gui):
             gui.status_label.config(text="❌ 날짜 형식 오류(끝 날짜). YYYY-MM-DD 형식으로 입력하세요.")
             return
 
-        # 파일 선택
         csv_path = filedialog.askopenfilename(
             title="전처리할 raw CSV 선택",
             initialdir=os.path.join(os.getcwd(), "결과"),
@@ -203,7 +207,6 @@ def run_preprocess(gui):
             return
 
         base = os.path.basename(csv_path)
-        # 기대 규칙: {사이트}_raw data_{YYMMDD}.csv
         if "_raw data_" in base:
             site = base.split("_raw data_")[0]
         else:
@@ -218,15 +221,11 @@ def run_preprocess(gui):
         print(f"[INFO] 전처리 입력: {csv_path}")
         print(f"[INFO] 전처리 출력: {out_path}")
 
-        # ✅ 빈 CSV 방지
         if is_empty_csv(csv_path):
-            gui.status_label.config(
-                text="ℹ️ 전처리할 내용이 없습니다. (크롤링 결과 0건 또는 파일이 비어있음)"
-            )
+            gui.status_label.config(text="ℹ️ 전처리할 내용이 없습니다. (크롤링 결과 0건 또는 파일이 비어있음)")
             print(f"[INFO] 전처리 스킵(빈 파일): {csv_path}")
             return
 
-        # ✅ process_file은 한 번만 호출 + 예외 메시지 친절화
         try:
             process_file(
                 search_excel_path="(언진) 2025 매체사 검색어 목록.xlsx",
@@ -253,8 +252,7 @@ def run_preprocess(gui):
         gui.status_label.config(text=f"❌ 전처리 중 에러: {e}")
         print(f"[ERROR] 전처리 실패: {e}")
 
-
-# 실행
+# GUI 실행 진입점
 if __name__ == "__main__":
     root = tk.Tk()
     gui = CrawlerGUI(root, list(crawlers.keys()))
@@ -262,7 +260,6 @@ if __name__ == "__main__":
 
     tk.Button(root, text="크롤링 시작", command=lambda: run_crawler(gui)).pack(pady=20)
     tk.Button(root, text="크롤링 중단", command=lambda: stop_crawler(gui)).pack(pady=5)
-
-    # 전처리 단독 실행 버튼
     tk.Button(root, text="전처리 실행(파일 선택)", command=lambda: run_preprocess(gui)).pack(pady=12)
+
     root.mainloop()
