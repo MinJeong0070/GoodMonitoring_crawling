@@ -19,12 +19,10 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 
-# ====================== 사용자 설정 ======================
 
-# 파일이 저장될 폴더 경로
 SAVE_DIR = r"D:\jupyter\community_site_crawling-main\site crawling\src\etc"
 
-# [업데이트] 이미지에서 추출한 15개 검색어 리스트
+# 15개 검색어 리스트
 QUERIES = [
     "잠꼬대가 시그널이었다, 알리도 KO패 당한 그 병",
     "제발 뜨거운 물 참아라, 머리카락 사수하는 소소한 습관",
@@ -43,7 +41,6 @@ QUERIES = [
     "‘단짠’ 조합으로 치팅한 다음날, 부종과 독소 빼려면 '이것'"
 ]
 
-# 수집할 기간 설정 (YYYY-MM-DD)
 TARGET_START_DATE = date(2025, 4, 1)
 TARGET_END_DATE = date(2025, 11, 30)
 
@@ -53,8 +50,6 @@ HEADLESS = False  # 작업 과정을 보려면 False, 안 보고 속도 높이�
 CHROMEDRIVER_PATH = r"C:\chromedriver-win64\chromedriver.exe"
 DAUM_CAFE_HOME_URL = "https://top.cafe.daum.net/"
 
-
-# ========================================================
 
 def parse_date_str(date_text: str) -> date:
     """날짜 문자열 파싱 (예: 25.10.28 -> 2025-10-28)"""
@@ -78,7 +73,6 @@ def init_driver(headless: bool = False):
     if headless:
         options.add_argument("--headless=new")
 
-    # [속도 최적화] 이미지, 알림, 팝업 차단
     prefs = {
         "profile.managed_default_content_settings.images": 2,
         "profile.default_content_setting_values.notifications": 2,
@@ -86,10 +80,8 @@ def init_driver(headless: bool = False):
     }
     options.add_experimental_option("prefs", prefs)
 
-    # [속도 최적화] 페이지 로드 전략: Eager
     options.page_load_strategy = 'eager'
 
-    # [로그 최적화]
     options.add_argument("--log-level=3")
     options.add_argument("--disable-logging")
     options.add_experimental_option("excludeSwitches", ["enable-logging"])
@@ -114,7 +106,6 @@ def safe_click(driver, locator, timeout: int = 5) -> bool:
         return True
     except:
         return False
-
 
 # ------------- 페이지 조작 로직 -------------
 
@@ -281,7 +272,6 @@ def crawl_query(driver, query: str, max_pages: int) -> List[Dict]:
             time.sleep(0.5)
 
     return results
-
 
 # ------------- 실행부 -------------
 
