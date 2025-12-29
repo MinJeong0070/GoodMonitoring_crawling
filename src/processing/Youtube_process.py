@@ -125,7 +125,6 @@ def build_ref_sets(ref_paths):
             raw_urls.extend(collect_ref_urls_from_excel(p))
             raw_names.extend(collect_ref_names_from_excel(p))
         else:
-            # txt/csv 등은 URL만 수집 (계정명은 구조 알 수 없으니 건너뜀)
             raw_urls.extend(collect_ref_urls_from_txt(p))
 
     norm_urls = [normalize_url(u) for u in raw_urls]
@@ -151,7 +150,6 @@ def mark_rows_to_drop(df_main, acc_url_col, acc_name_col, search_col, ref_url_se
     # URL 기준
     urls = df_main[acc_url_col].astype(str).map(normalize_url)
 
-    # 계정명 기준
     if acc_name_col:
         names = df_main[acc_name_col].astype(str).str.strip().str.lower()
     else:
@@ -204,7 +202,6 @@ def main():
     if not m_acc_url:
         raise ValueError("⚠️ 원본 파일에서 '계정 URL' 컬럼을 찾지 못했습니다.")
 
-    # ---- 공식/비공식 세트 각각 만들기 (URL + 계정명) ----
     if official_paths:
         official_url_set, official_name_set, official_raw_url, official_raw_name = build_ref_sets(official_paths)
     else:
@@ -230,7 +227,6 @@ def main():
     print(f"- 공식+비공식 합집합 고유 URL 수     : {len(union_url_set)}")
     print(f"- 공식+비공식 합집합 고유 계정명 수 : {len(union_name_set)}\n")
 
-    # ---- 삭제 대상 판정( URL + 계정명 + 검색어 기준 ) ----
     total_before = len(df_main)
     drop_flags = mark_rows_to_drop(
         df_main,
@@ -244,7 +240,6 @@ def main():
     df_after = df_main.loc[[not f for f in drop_flags]].copy()
     total_after = len(df_after)
 
-    # ---- 출력용 정리 ----
     if not m_platform:
         df_after["플랫폼"] = DEFAULT_PLATFORM
         out_platform_col = "플랫폼"
@@ -265,7 +260,6 @@ def main():
 
     df_after = df_after.rename(columns=rename_map)
 
-    # 누락 시 보강
     if "검색어" not in df_after.columns:
         df_after["검색어"] = ""
     if "게시물 URL" not in df_after.columns:
@@ -283,11 +277,9 @@ def main():
 
     df_out = df_after[OUTPUT_ORDER].copy()
 
-    # ---- 저장 ----
     out_path = main_path.parent / f"{main_path.stem}_전처리완료.xlsx"
     df_out.to_excel(out_path, index=False)
 
-    # ---- 결과 출력 ----
     print("===== 전처리 결과 =====")
     print(f"전처리 전(총)        : {total_before}")
     print(f"삭제 개수            : {to_delete}")

@@ -31,7 +31,6 @@ def find_header_column(ws, header_name_candidates):
     return None, None
 
 def ensure_url_column(ws, after_col_idx, url_header=URL_HEADER):
-    # 이미 있으면 그대로 사용
     for c in ws[1]:
         if (c.value or "").strip() == url_header:
             return c.column
@@ -61,12 +60,10 @@ def unlink_cell(cell):
         cell.hyperlink = None
     except Exception:
         pass
-    # 파란색/밑줄 스타일 제거 시도
     if cell.font and (cell.font.u or (cell.font.color and getattr(cell.font.color, "rgb", None))):
         cell.font = cell.font.copy(u=None, color=None)
 
 def process_input_sheet_in_place(ws):
-    """제목 하이퍼링크 → URL 추출, 제목 링크 해제, URL 열 생성"""
     col_idx, _ = find_header_column(ws, CANDIDATE_TITLE_HEADERS)
     if not col_idx:
         raise ValueError("제목 열을 찾을 수 없습니다. (예: '게시물 제목', '게시글제목', '제목')")
@@ -88,7 +85,6 @@ def process_input_sheet_in_place(ws):
     return col_idx, url_col_idx
 
 def get_last_data_row(ws):
-    """내용이 있는 마지막 행(헤더 제외) 찾기. 없으면 1 반환(즉, 다음 데이터는 2행부터)."""
     last = ws.max_row
     for r in range(last, 1, -1):
         if any(ws.cell(row=r, column=c).value is not None for c in range(1, ws.max_column + 1)):
@@ -105,12 +101,10 @@ def ensure_output_workbook(path: Path):
     return wb_out
 
 def ensure_output_sheet(wb_out, ws_in):
-    """출력 통합문서에 동일 시트명이 있으면 반환. 없으면 헤더를 복사해 새 시트 생성."""
     name = ws_in.title
     if name in wb_out.sheetnames:
         return wb_out[name], False
     ws_out = wb_out.create_sheet(title=name)
-    # 헤더 복사
     for c in range(1, ws_in.max_column + 1):
         ws_out.cell(row=1, column=c, value=ws_in.cell(row=1, column=c).value)
     return ws_out, True
@@ -144,7 +138,6 @@ def main():
 
     wb_out = ensure_output_workbook(output_path)
 
-    # 시트별로 '첫 파일 여부' 추적 → 첫 파일만 헤더 포함 복사
     first_source_seen_for_sheet = set(s for s in wb_out.sheetnames if get_last_data_row(wb_out[s]) > 1)
 
     for file_idx, in_path in enumerate(in_paths):
@@ -158,13 +151,11 @@ def main():
             ws_out, created = ensure_output_sheet(wb_out, ws_in)
             sheet_key = ws_in.title
 
-            # 출력 시트가 이미 데이터(헤더 제외)를 갖고 있으면, 무조건 헤더 제외 이어붙임
             already_has_data = get_last_data_row(ws_out) > 1
             if already_has_data:
                 append_data_rows(ws_out, ws_in, skip_header=True)
                 action = "기존 데이터 아래로 추가"
             else:
-                # 이 시트를 처음 채우는 경우: 첫 번째 입력 파일만 헤더 포함, 이후는 헤더 제외
                 is_first_for_this_sheet = sheet_key not in first_source_seen_for_sheet
                 if is_first_for_this_sheet:
                     append_data_rows(ws_out, ws_in, skip_header=False)  # 헤더 포함
