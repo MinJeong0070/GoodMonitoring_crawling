@@ -8,7 +8,6 @@ import os
 from datetime import datetime, date
 from pathlib import Path
 
-# tkcalendar가 없어도 실행되도록 폴백
 try:
     from tkcalendar import DateEntry
 except ImportError:
@@ -39,7 +38,6 @@ class CrawlerGUI:
         self._build_log()
         self.load_accounts()
 
-    # ── 필터 영역 ─────────────────────────────────────────────
     def _build_filters(self):
         frm = ttk.LabelFrame(self.root, text="필터")
         frm.pack(fill="x", padx=10, pady=8)
@@ -81,7 +79,6 @@ class CrawlerGUI:
         except Exception:
             return None
 
-    # ── 계정 선택 영역 ─────────────────────────────────────────
     def _build_accounts_panel(self):
         frm = ttk.LabelFrame(self.root, text="계정 선택")
         frm.pack(fill="both", padx=10, pady=6, expand=True)
@@ -112,7 +109,6 @@ class CrawlerGUI:
         self.sel_count_lbl.pack(anchor="e")
         self.lst_accounts.bind("<<ListboxSelect>>", lambda e: self._update_sel_count())
 
-    # ── 실행/일시정지/종료 버튼 ─────────────────────────────────
     def _build_controls(self):
         frm = ttk.Frame(self.root)
         frm.pack(fill="x", padx=10, pady=6)
@@ -129,7 +125,6 @@ class CrawlerGUI:
         self.txt_log = ScrolledText(frm, height=12)
         self.txt_log.pack(fill="both", expand=True)
 
-    # ── 계정 로딩/검색/선택 ─────────────────────────────────────
     def load_accounts(self):
         self.lst_accounts.delete(0, tk.END)
         if not os.path.exists(ACCOUNTS_XLSX):
@@ -175,9 +170,7 @@ class CrawlerGUI:
     def _update_sel_count(self):
         self.sel_count_lbl.config(text=f"선택 {len(self.lst_accounts.curselection())}명")
 
-    # ── 실행/일시정지/종료 ─────────────────────────────────────
     def start_crawl(self):
-        # 동시 실행 가드
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showwarning("경고", "이미 실행 중입니다.")
             return

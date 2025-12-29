@@ -14,14 +14,6 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-"""
-copy112_crawler.py
-
-- 로그인 → 신고내역 리스트 크롤링 → (옵션) 신고처리완료 상세 진입(심의결과/처리내용) → 엑셀 저장
-- GUI(copy112_gui.py)에서 run_crawl()를 호출해 사용
-"""
-
-
 # 대상 URL
 LIST_URL = "https://copy112.kcopa.or.kr/mypage/unlaw/mypageUnlawList.do"
 LOGIN_URL = "https://copy112.kcopa.or.kr/member/loginForm.do"
@@ -33,7 +25,6 @@ STATUS_GROUPS = {
     "신고 접수 중": {"채증 및 검증", "위원심의", "시정권고", "이행여부 확인"},
     "신고 접수 완료": {"신고처리완료"},
 }
-
 
 # ──────────────────────────────────────────────
 # 공용 유틸
@@ -52,7 +43,6 @@ def _wait_table_ready(driver, timeout=10):
         rows2 = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
         print("[DEBUG] rows(generic):", len(rows2))
 
-    # ② 페이지 루프에서 행 읽기 직전
     rows = driver.find_elements(By.CSS_SELECTOR, "table.result-list tbody tr")
     if not rows:
         rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
@@ -118,7 +108,6 @@ def _classify_page_dates(driver, start_date, end_date):
             has_older = True
     return has_newer, has_in_range, has_older
 
-
 # ──────────────────────────────────────────────
 # 페이징
 # ──────────────────────────────────────────────
@@ -131,7 +120,6 @@ def _goto_next_page_by_one(driver, current_page_num, timeout=8):
     """
     next_num = current_page_num + 1
 
-    # 1) 현재 블록 내에서 다음 숫자
     try:
         cur = WebDriverWait(driver, timeout).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "a.current"))
@@ -150,7 +138,6 @@ def _goto_next_page_by_one(driver, current_page_num, timeout=8):
     except Exception:
         pass
 
-    # 2) 블록 경계: '다음(>)' → 새 블록에서 숫자
     try:
         nxt = WebDriverWait(driver, timeout).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "a.page.next, a.next"))
@@ -179,13 +166,11 @@ def _goto_next_page_by_one(driver, current_page_num, timeout=8):
     except Exception:
         pass
 
-    # 3) 이동 실패 → 마지막 페이지로 간주
     try:
         cur_after = int(driver.find_element(By.CSS_SELECTOR, "a.current").text.strip())
     except Exception:
         cur_after = current_page_num
     return cur_after != current_page_num
-
 
 # ──────────────────────────────────────────────
 # 리스트/상세 파싱
@@ -250,7 +235,6 @@ def _extract_row_dict(row):
             d["사이트링크"] = ""
     return d
 
-
 # ──────────────────────────────────────────────
 # 메인 엔트리
 # ──────────────────────────────────────────────
@@ -312,7 +296,6 @@ def run_crawl(
         found_any_in_period = False  # 이 계정에서 '기간 내 데이터'를 한번이라도 찾았는지 확인
 
         try:
-            # 로그인
             driver.get(LOGIN_URL)
             time.sleep(2)
             driver.find_element(By.ID, "userid").send_keys(user_id)
@@ -324,7 +307,6 @@ def run_crawl(
             driver.get(LIST_URL)
             _wait_table_ready(driver)
 
-            # 페이지 루프
             zero_page_streak = 0
             max_zero_streak = 5  # 연속 5페이지가 필터 일치 0건이면 안전 종료
 
@@ -338,7 +320,6 @@ def run_crawl(
                         if stop_event and stop_event.is_set():
                             break
 
-                # 현재 페이지 번호
                 try:
                     cur_el = WebDriverWait(driver, 6).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "a.current"))
@@ -348,20 +329,16 @@ def run_crawl(
                     log("현재 계정 접속 실패")
                     break
 
-                # 페이지 날짜 분포
                 newer_flag, inrange_flag, older_flag = _classify_page_dates(driver, start_date, end_date)
 
-                # 날짜 판정 불명(회색지대) → 방어적으로 1페이지 전진(마지막이면 종료)
                 if (start_date or end_date) and not (newer_flag or inrange_flag or older_flag):
                     moved = _goto_next_page_by_one(driver, current_page_num)
                     if not moved:
                         if not found_any_in_period:
                             log(f"{name or user_id} : 선택한 기간에 해당하는 데이터가 없어 종료 → 다음 계정으로 이동")
                         break
-                    # 다음 루프로
                     continue
 
-                # 종료일 이후만 있고(너무 최신), 기간 내가 없으면 1페이지 전진
                 if (start_date or end_date) and newer_flag and not inrange_flag:
                     moved = _goto_next_page_by_one(driver, current_page_num)
                     if not moved:
@@ -400,7 +377,6 @@ def run_crawl(
                     if d_date_ok and d_status_ok:
                         found_any_in_period = True
 
-                        # 접수번호 중복 제거
                         receipt = d.get("접수번호", "").strip()
                         if receipt and receipt in seen_receipts:
                             idx += 1
@@ -425,7 +401,6 @@ def run_crawl(
 
                     idx += 1
 
-                # 페이지 처리 결과 로그 + 연속 0건 종료장치
                 page_added = collected_this_account - prev_cnt
                 msg = f"{name or user_id} : {current_page_num}페이지 수집 완료, 누적 {collected_this_account}건"
                 if page_added == 0:
@@ -439,12 +414,10 @@ def run_crawl(
                     log(f"{name or user_id} : 연속 {max_zero_streak}페이지 필터 일치 0건 → 계정 수집 종료")
                     break
 
-                # 시작일 이전 데이터가 하나라도 보이면 종료(요구 조건 유지)
                 if (start_date or end_date) and older_flag:
                     log(f"{name or user_id} : 시작일 이전 데이터 발견 → 계정 수집 종료")
                     break
 
-                # 다음 페이지로 1장 전진 + 페이지 번호 미변경 안전장치
                 prev_num = current_page_num
                 moved = _goto_next_page_by_one(driver, current_page_num)
                 if not moved:
@@ -475,13 +448,11 @@ def run_crawl(
         if stop_event and stop_event.is_set():
             break
 
-    # ───────── 최종 저장 (원자적, 충돌 방지, 0건 미저장) ─────────
     df = pd.DataFrame(all_rows, columns=[
         "계정", "성명", "순번", "접수번호", "신고유형", "사이트링크",
         "저작물명", "서버위치", "처리현황", "신고일자", "심의결과", "처리내용"
     ])
 
-    # 수집 0건이면 저장 생략
     if len(df) == 0:
         log("수집 결과 0건으로 최종 저장을 건너뜁니다.")
         return df, None
@@ -493,7 +464,6 @@ def run_crawl(
     final_tmp = output_dir / (final_name + ".tmp")
     final_path = output_dir / final_name
 
-    # 원자적 저장 + 재시도
     last_err = None
     for i in range(3):
         try:
