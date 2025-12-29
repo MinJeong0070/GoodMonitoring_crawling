@@ -4,23 +4,8 @@ import re
 from datetime import datetime
 import pandas as pd
 
-"""
-티스토리 통합 CSV 전용 전처리 스크립트
-- 입력: 통합된 티스토리 CSV(.csv)
-- 참고 파일(4종):
-    1) (언진) 2025 매체사 검색어 목록.xlsx  -> sheet='검색어 목록', 컬럼: '검색어명'
-    2) (언진) 전처리용 도메인 주소.xlsx    -> 컬럼: '도메인' (신뢰 매체 도메인)
-    3) 비신탁사_저작권문구+도메인주소.xlsx  -> 컬럼: '저작권 문구', '도메인' (비신탁사)
-    4) 비신탁사 매체명(전처리).xlsx        -> 컬럼: '매체명' (비신탁사 매체명)
-- 출력: RESULT_DIR/티스토리_전처리_YYYYMMDD_HHMMSS.xlsx
-
-process_file.py와 동일한 전처리 파이프라인을 CSV에 맞춰 재구성: 인코딩 폴백, 연·월 필터,
-URL 정규화 후 중복 제거, 비신탁/신뢰 도메인 룰, '다.' 규칙, 동일한 출력 로그 형식.  # :contentReference[oaicite:2]{index=2}
-티스토리 원본의 컬럼명 편차를 감안한 매핑/한국어 오전·오후 처리 유지.                 # :contentReference[oaicite:3]{index=3}
-"""
-
 # ====== 설정 (환경에 맞게 바꾸세요) ======
-INPUT_TISTORY_CSV = r"D:\jupyter\community_site_crawling-main\site crawling\티스토리\티스토리 8월\8월_티스토리 통합.csv"
+INPUT_TISTORY_CSV = r"C:\Users\USER\Downloads\티스토리 12월\12월 3주차\12월 3주차 티스토리 통합.csv"
 
 SEARCH_KEYWORD_XLSX = r"D:\jupyter\community_site_crawling-main\site crawling\(언진) 2025 매체사 검색어 목록.xlsx"
 TRUSTED_DOMAIN_XLSX = r"D:\jupyter\community_site_crawling-main\site crawling\(언진) 전처리용 도메인 주소.xlsx"
@@ -28,12 +13,12 @@ UNTRUSTED_COPY_DOMAIN_XLSX = r"D:\jupyter\community_site_crawling-main\site craw
 UNTRUSTED_MEDIA_XLSX = r"D:\jupyter\community_site_crawling-main\site crawling\비신탁사 매체명(전처리).xlsx"
 
 TARGET_YEAR = 2025
-TARGET_MONTH = 8
+TARGET_MONTH = 12
 
-RESULT_DIR = r"D:\jupyter\community_site_crawling-main\site crawling\티스토리\티스토리 8월\결과"
+RESULT_DIR = r"C:\Users\USER\Downloads\티스토리 12월\12월 2주차"
+
 # ======================================
 
-# 통합 데이터에 반드시 있어야 하는 논리컬럼과 대응 후보(티스토리 용어 편차 흡수)
 REQUIRED_COLS = {
     "검색어": ["검색어", "키워드"],
     "게시물 제목": ["게시물 제목", "게시글 제목", "티스토리 제목", "글 제목", "포스트 제목"],
@@ -138,14 +123,12 @@ def _should_remove_by_da_rule(row) -> bool:
 def preprocess_tistory_csv(input_csv: str, out_dir: str, year: int, month: int) -> str:
     os.makedirs(out_dir, exist_ok=True)
 
-    # ----- CSV 로드 (process_file.py와 동일하게 인코딩 폴백) -----
     try:
         df = pd.read_csv(input_csv, encoding="utf-8")
     except UnicodeDecodeError:
         print("⚠️ UTF-8 디코딩 실패, cp949로 재시도합니다.")
         df = pd.read_csv(input_csv, encoding="cp949")  # :contentReference[oaicite:4]{index=4}
 
-    # ----- 컬럼 정규화(티스토리 편차 흡수) -----
     df = _ensure_columns(df)  # :contentReference[oaicite:5]{index=5}
 
     # 타입/결측 보정 + URL 정규화
@@ -156,7 +139,6 @@ def preprocess_tistory_csv(input_csv: str, out_dir: str, year: int, month: int) 
     # 날짜 파싱(한국어 오전/오후 대응)
     df["게시물 등록일자"] = _parse_datetime_safe(df["게시물 등록일자"])
 
-    # ----- 1) 검색어 포함 + 제외어 제거 (process_file.py와 동일) -----
     def _search_hit(x):
         kw = str(x['검색어']).lower()
         title = str(x['게시물 제목']).lower()
@@ -194,7 +176,6 @@ def preprocess_tistory_csv(input_csv: str, out_dir: str, year: int, month: int) 
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         filtered.to_excel(writer, index=False)
 
-    # ----- 로그 (process_file.py와 동일 포맷) -----
     print(f"전처리된 데이터 저장 완료 (Excel): {out_path}")
     print(f"전처리 이전 : {len(df)}개\n"
           f"전처리 이후 : {len(filtered)}개\n"
