@@ -1,9 +1,4 @@
 # primevideo_gui.py
-# -------------------------------
-# primevideo_crawler.py의 함수를 import하여
-# GUI(그래픽 인터페이스)로 실행하는 스크립트
-# -------------------------------
-
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
@@ -14,8 +9,6 @@ import re
 import time
 import logging
 
-# --- primevideo_crawler.py에서 실제 함수 Import ---
-# (두 파일이 같은 폴더에 있다고 가정)
 try:
     from primevideo_crawler import (
         run_category,
@@ -86,8 +79,6 @@ class ScrollableFrame(ttk.Frame):
         scrollbar.bind("<MouseWheel>", self._on_mousewheel)
 
     def _on_mousewheel(self, event):
-        # 마우스 휠 스크롤 지원
-        # (윈도우/리눅스 호환)
         if event.delta:  # 윈도우
             delta = -1 * (event.delta // 120)
         else:  # 리눅스
@@ -100,7 +91,6 @@ class ScrollableFrame(ttk.Frame):
         parent_canvas.yview_scroll(delta, "units")
 
 
-# --- 메인 GUI 애플리케이션 ---
 class CrawlerGUI(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -111,7 +101,6 @@ class CrawlerGUI(tk.Tk):
         self.all_sections = {}  # 파일에서 읽어온 섹션 (이름, URL) 저장
         self.category_frames = {}  # 스크롤 프레임 저장
 
-        # 크롤링할 파일 경로 정의
         self.FILE_PATHS = {
             "movies": ("[영화].txt", "output_excel/primevideo_영화.xlsx"),
             "tv": ("[TV 프로그램].txt", "output_excel/primevideo_TV프로그램.xlsx"),
@@ -160,7 +149,6 @@ class CrawlerGUI(tk.Tk):
         )
         cb_sports.pack(anchor="w", padx=5, pady=2)
 
-        # --- 2. 하위 섹션 (동적 생성) ---
         self.sections_container = ttk.Frame(self)
         self.sections_container.pack(padx=10, pady=5, fill="both", expand=True)
 
@@ -168,13 +156,11 @@ class CrawlerGUI(tk.Tk):
         self.create_section_frame("tv", "3. 'TV 프로그램' 하위 섹션 선택")
         self.create_section_frame("sports", "4. '스포츠' 하위 섹션 선택")
 
-        # --- 3. 실행 버튼 ---
         self.start_button = ttk.Button(
             self, text="크롤링 시작", command=self.start_crawl_thread
         )
         self.start_button.pack(padx=10, pady=20, fill="x", ipady=5)
 
-        # --- 초기 상태 설정 ---
         self.toggle_all()  # 처음엔 하위 섹션 모두 숨김
 
     def create_section_frame(self, key, title):
@@ -196,7 +182,6 @@ class CrawlerGUI(tk.Tk):
         scroll_frame = ScrollableFrame(frame)
         scroll_frame.pack(fill="x", expand=True, padx=5, pady=5)
 
-        # "전체" 체크박스
         all_key = f"{key}_all"
         self.vars[all_key] = tk.BooleanVar()
         cb_all = ttk.Checkbutton(
@@ -250,7 +235,6 @@ class CrawlerGUI(tk.Tk):
         """ 크롤링 함수를 별도 스레드에서 실행 (GUI 멈춤 방지) """
         self.start_button.config(text="크롤링 진행 중...", state="disabled")
 
-        # GUI에서 선택된 값을 실제 파일 경로로 변환
         self.crawl_jobs = []
         self.temp_files = []
 
@@ -262,10 +246,8 @@ class CrawlerGUI(tk.Tk):
                 txt_path, out_xlsx = self.FILE_PATHS[key]
 
                 if self.vars[f"{key}_all"].get():
-                    # "OO 전체" 선택 시: 원본 파일 사용
                     self.crawl_jobs.append((txt_path, out_xlsx))
                 else:
-                    # "개별" 선택 시: 임시 파일 생성
                     selected_sections = []
                     for sec_name, sec_url in self.all_sections[key]:
                         if self.vars[f"{key}_{sec_name}"].get():
@@ -291,7 +273,6 @@ class CrawlerGUI(tk.Tk):
             self.crawl_finished()
             return
 
-        # 별도 스레드에서 실제 크롤링 실행
         threading.Thread(target=self.run_crawl_logic, daemon=True).start()
 
     def run_crawl_logic(self):
@@ -308,7 +289,6 @@ class CrawlerGUI(tk.Tk):
             driver = make_driver(headless=False, block_images=False)
             driver.get("https://www.primevideo.com/")
 
-            # [수정] input() 대신 messagebox로 로그인 대기
             messagebox.showinfo(
                 "로그인 대기", "브라우저에서 로그인을 완료한 후, 이 창의 [확인] 버튼을 눌러주세요."
             )
@@ -334,7 +314,6 @@ class CrawlerGUI(tk.Tk):
             if driver:
                 driver.quit()
 
-            # 임시 파일 삭제
             for temp_path in self.temp_files:
                 try:
                     os.remove(temp_path)
@@ -342,7 +321,6 @@ class CrawlerGUI(tk.Tk):
                 except Exception as e:
                     logger.warning(f"임시 파일 삭제 실패: {temp_path}, {e}")
 
-            # GUI 버튼 원상 복구 (메인 스레드에서 실행)
             self.after(0, self.crawl_finished)
 
     def crawl_finished(self):

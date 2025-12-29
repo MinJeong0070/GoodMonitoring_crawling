@@ -37,10 +37,6 @@ def make_logger():
     logger.info(f"로그 파일: {log_path}")
     return logger
 
-
-# -------------------------------
-# 브라우저 설정
-# -------------------------------
 def make_driver(headless=False, block_images=True):
     chrome_opts = uc.ChromeOptions()
     if headless:
@@ -50,7 +46,6 @@ def make_driver(headless=False, block_images=True):
     chrome_opts.add_argument("--no-sandbox")
     chrome_opts.add_argument("--disable-dev-shm-usage")
 
-    # 로그인 유지 / 재시작 대응을 위한 고정 프로필 경로
     profile_dir = os.path.join(os.getcwd(), "primevideo_profile")
     os.makedirs(profile_dir, exist_ok=True)
     chrome_opts.add_argument(f"--user-data-dir={profile_dir}")
@@ -66,7 +61,6 @@ def make_driver(headless=False, block_images=True):
     driver.set_script_timeout(60)
     driver.implicitly_wait(0)
     return driver
-
 
 # -------------------------------
 # 유틸 함수들
@@ -101,7 +95,6 @@ def clean_url(url):
     path = parsed.path
     path = re.sub(r"/ref=.*", "", path)
     return urljoin(url, path)
-
 
 # -------------------------------
 # 리스트 페이지 수집 관련
@@ -254,7 +247,6 @@ def crawl_list_page(driver, url, logger, max_idle_rounds=3, per_round_pause=1.2,
             break
 
     return harvested
-
 
 # -------------------------------
 # 상세 페이지 스크래핑 헬퍼
@@ -499,7 +491,6 @@ def extract_single_page_info(driver, logger, current_url):
         "specific_url": current_url,
     }
 
-
 # -------------------------------
 # 상세 페이지 메인 컨트롤러 (멀티 시즌 처리)
 # -------------------------------
@@ -637,14 +628,7 @@ def run_category(
     flush_every=10,
     restart_every=100,
 ):
-    """
-    - 기존 기능 유지:
-      * txt 파일의 섹션별로 시트를 만들어 하나의 xlsx로 저장
-    - 추가 기능:
-      * 상세페이지 데이터를 10건마다 체크포인트 CSV로 저장
-      * 상세페이지 100건 처리마다 브라우저 재시작
-      * NoSuchWindowException 발생 시 브라우저 재시작 후 같은 콘텐츠부터 재시도
-    """
+
     sections = parse_section_file(txt_path)
     if not sections:
         logger.warning(f"파일 없음: {txt_path}")
@@ -656,10 +640,8 @@ def run_category(
     checkpoint_dir = os.path.join(os.path.dirname(out_xlsx) or ".", "_checkpoint")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # 최종 엑셀(기존 동작 유지)
     writer = pd.ExcelWriter(out_xlsx, engine="openpyxl")
 
-    # 상세페이지 처리 개수(브라우저 재시작 기준)
     processed_count = 0
 
     for sec_name, url in sections:
@@ -702,7 +684,6 @@ def run_category(
             detail_retry = 0
             while True:
                 try:
-                    # 100개 처리마다 브라우저 재시작 (메모리 정리)
                     if (
                         restart_every
                         and processed_count > 0
@@ -726,7 +707,6 @@ def run_category(
                     results_list = scrape_detail_page(driver, logger)
 
                     if not results_list:
-                        # 최소한 href와 title은 남겨둔다
                         row = {
                             "title": item["title"],
                             "href": clean_href,
@@ -775,7 +755,6 @@ def run_category(
                             f"[{sec_name} {i + 1}/{total}] "
                             f"NoSuchWindowException 3회 발생으로 이 항목은 건너뜁니다."
                         )
-                        # 최소한 에러 행 하나는 남겨둔다
                         row = {
                             "title": item["title"],
                             "href": clean_href,
@@ -793,7 +772,6 @@ def run_category(
 
                     logger.info("[상세] 브라우저 재시작 후 같은 콘텐츠 다시 시도합니다.")
                     driver = make_driver(headless=headless, block_images=block_images)
-                    # 다음 루프에서 driver.get(clean_href) 다시 수행
 
                 except WebDriverException as e:
                     detail_retry += 1
@@ -828,7 +806,6 @@ def run_category(
 
                     logger.info("[상세] 브라우저 재시작 후 같은 콘텐츠 다시 시도합니다.")
                     driver = make_driver(headless=headless, block_images=block_images)
-                    # 다음 루프에서 driver.get(clean_href) 다시 수행
 
                 except Exception as e:
                     logger.error(
@@ -903,7 +880,6 @@ def run_category(
     writer.close()
     logger.info(f"엑셀 파일 저장 완료: {out_xlsx}")
     return driver
-
 
 def main():
     ap = argparse.ArgumentParser()
