@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 일간베스트 게시물 상세 페이지에서 제목, 본문, 작성자, 날짜 등을 수집하여 CSV 저장
 def ilbe_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -58,7 +58,6 @@ def ilbe_crw(wd, url, search):
         # content = soup.find('div', class_='post-content').text.strip()
         # content_strip = ' '.join(content.split())
         # content_list.append(content_strip)
-        # logging.info("내용 추출 성공")
 
         # 2. 기사제거
         # <a> 태그 제거 (기사 링크, 유튜브 등)
@@ -68,10 +67,8 @@ def ilbe_crw(wd, url, search):
         # 본문 추출 (띄어쓰기 유지)
         post_content = content_div.get_text(separator=' ', strip=True)
 
-        # URL 제거
         post_content_cleaned = re.sub(r'https?://[^\s]+', '', post_content).strip()
 
-        # 최종 저장
         content_list.append(post_content_cleaned)
         logging.info("내용 추출 성공 (URL 제거됨)")
 
@@ -105,17 +102,14 @@ def ilbe_crw(wd, url, search):
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
@@ -138,7 +132,6 @@ def ilbe_crw(wd, url, search):
             # "이미지 유무": image_check_list
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/10.일간베스트/{today}/일간베스트_{search}.csv')
         logging.info(f'csv/10.일간베스트/{today}/일간베스트_{search}.csv')
 
@@ -156,6 +149,7 @@ def ilbe_crw(wd, url, search):
 
 
 # Web scraping
+# 검색어/기간 조건에 따라 일간베스트 전체 목록을 순회하며 게시글 상세 수집
 def ilbe_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'csv/10.일간베스트/{today}'):
         os.makedirs(f'csv/10.일간베스트/{today}')
@@ -187,7 +181,6 @@ def ilbe_main_crw(searchs, start_date, end_date,stop_event):
 
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 li_tags = soup_dp1.find('div', class_='search-list').find_all('li')
                 logging.info(f"검색목록 찾음.")
 

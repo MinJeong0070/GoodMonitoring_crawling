@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 82쿡 개별 게시물 URL에서 제목, 본문, 날짜, 작성자 등 수집하여 CSV 저장
 def cook82_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -56,7 +56,6 @@ def cook82_crw(wd, url, search):
         # content =  soup.find('div', id='articleBody').get_text().strip()
         # content_strip = ' '.join(content.split())
         # content_list.append(content_strip)
-        # logging.info("내용 추출 성공")
 
         # <a> 태그 중 이미지/비디오/유튜브 없는 경우만 제거
         for a_tag in content_div.find_all('a'):
@@ -71,10 +70,8 @@ def cook82_crw(wd, url, search):
         # 본문 텍스트 추출 (띄어쓰기 유지)
         post_content = content_div.get_text(separator=' ', strip=True)
 
-        # URL 제거 (텍스트에 포함된 경우만)
         post_content = re.sub(r'https?://[^\s]+', '', post_content)
 
-        # 게시글 내용 추가
         content_list.append(post_content)
         logging.info(f"내용 추출 성공 (URL 제거 및 띄어쓰기 유지)")
 
@@ -94,39 +91,30 @@ def cook82_crw(wd, url, search):
 
         current_date_list.append(datetime.now().strftime('%Y-%m-%d'))
 
-        # # 이미지/비디오/유튜브 유무 확인
         # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
         #     bg_images = content_div.find_all('span', class_='scrap_img')
         #
-        #     # 2. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 3. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
@@ -151,6 +139,7 @@ def cook82_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 검색어 리스트에 따라 게시판을 순회하며 전체 게시글 크롤링 및 저장 수행
 def cook82_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'csv/12.82쿡/{today}'):
         os.makedirs(f'csv/12.82쿡/{today}')
@@ -174,7 +163,6 @@ def cook82_main_crw(searchs, start_date, end_date,stop_event):
                 logging.info(f"크롤링 시작-검색어: {search}")
                 # 제목검색
                 url = f'https://www.82cook.com/entiz/enti.php?bn=15&searchType=search&search1=1&keys={search}&page={page_num}'
-                # 내용검색
                 # url = f'https://www.82cook.com/entiz/enti.php?bn=15&searchType=search&search1=2&keys={search}&page={page_num}'
 
                 wd_dp1.get(url)
@@ -184,7 +172,6 @@ def cook82_main_crw(searchs, start_date, end_date,stop_event):
 
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 tr_tags = soup_dp1.find('div', id='bbs').find('tbody', ).find_all('tr')
                 td_test = soup_dp1.find('div', id='bbs').find('tbody', ).find('tr').find('td', class_='title')
                 if not td_test:

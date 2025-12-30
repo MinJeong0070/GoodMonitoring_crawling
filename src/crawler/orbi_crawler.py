@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 오르비 단일 게시글 크롤링 (내용·제목·날짜·작성자 추출 후 CSV 저장)
 def orbi_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -67,7 +67,6 @@ def orbi_crw(wd, url, search):
             content = soup.find('div', class_='content-wrap').text.strip()
             # content_strip = ' '.join(content.split())
             # content_list.append(content_strip)
-            # logging.info("내용 추출 성공")
 
             # # 태그
             # tags = [li.text for li in soup.find('ul', class_='tag-list').find_all('li') if li.find('a')]
@@ -86,10 +85,8 @@ def orbi_crw(wd, url, search):
             # 본문 텍스트 추출 (띄어쓰기 유지)
             post_content = content_div.get_text(separator=' ', strip=True)
 
-            # 텍스트 안에 있는 URL 제거 (http/https 링크만)
             post_content = re.sub(r'https?://[^\s]+', '', post_content)
 
-            # 게시글 내용 추가
             content_list.append(post_content)
             logging.info(f"내용 추출 성공 (URL 제거 및 띄어쓰기 유지): {post_content}")
 
@@ -107,39 +104,30 @@ def orbi_crw(wd, url, search):
             # 채널명
             writer_list.append(soup.find('a', class_='nickname ng-isolate-scope').find_all('span')[1].text)
 
-        # # 이미지/비디오/유튜브 유무 확인
         # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
         #     bg_images = content_div.find_all('span', class_='scrap_img')
         #
-        #     # 2. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 3. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
@@ -155,7 +143,6 @@ def orbi_crw(wd, url, search):
             # "이미지 유무": image_check_list
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/13.오르비/{today}/오르비_{search}.csv')
         logging.info(f'csv/13.오르비/{today}/오르비_{search}.csv')
 
@@ -172,6 +159,7 @@ def orbi_crw(wd, url, search):
         return None
 
 
+# 오르비 검색어별 전체 페이지 순회 크롤링 수행 후 결과 병합 저장
 def orbi_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/13.오르비/{today}'):
         os.makedirs(f'csv/13.오르비/{today}')
@@ -202,7 +190,6 @@ def orbi_main_crw(searchs, start_date, end_date, stop_event):
                 time.sleep(2)
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 li_tags = soup_dp1.find('ul', class_='post-list').find_all('li')
                 logging.info(f"검색목록 찾음.")
                 for li in li_tags:

@@ -27,11 +27,11 @@ G2 = f"{BASE}/g2/bbs"
 SFL = "wr_subject%7C%7Cwr_content"
 SOP = "and"
 
-# 기본값 (동적 탐색 실패 시 사용)
 DEFAULT_BO_TABLES = [
     "calciotalk", "freetalk", "issue", "game", "sports", "multimedia"
 ]
 
+# 세리에매니아 내 게시판 bo_table 리스트를 동적으로 수집
 def discover_all_bo_tables(wd) -> list:
     """사이트 내 모든 bo_table을 동적으로 발견"""
     seen = set()
@@ -52,6 +52,7 @@ def discover_all_bo_tables(wd) -> list:
     return sorted(seen)
 
 
+# 개별 게시글 URL에서 제목, 본문, 작성자, 날짜 등을 추출하여 DataFrame 반환
 def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
     writer_list, title_list, content_list, url_list = [], [], [], []
     search_plt_list, search_word_list, date_list, now_date = [], [], [], []
@@ -91,7 +92,7 @@ def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
                     break
         writer_list.append(writer)
 
-        # ✅ 본문만 추출
+        # 본문만 추출
         content_div = (
             soup.find('div', id='resContents') or  # 게시물 본문 영역
             soup.find(id='bo_v_con') or
@@ -106,7 +107,6 @@ def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
         else:
             post_content = ''
 
-        # ✅ 누락된 append (없으면 DataFrame 생성 시 길이 불일치)
         content_list.append(post_content)
 
         # 키워드 재검증(제목+본문) — 검색엔진의 느슨한 매칭 방지
@@ -151,6 +151,7 @@ def _extract_post(wd, url: str, search: str, board_name: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+# 검색어 기반 전체 게시판 순회 크롤링 및 결과 저장
 def serieamania_main_crw(searchs, start_date, end_date, stop_event):
     out_dir = f'csv/세리에매니아/{_today}'
     os.makedirs(out_dir, exist_ok=True)

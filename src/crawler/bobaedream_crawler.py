@@ -17,7 +17,6 @@ today = datetime.now().strftime("%y%m%d")
 if not os.path.exists(f'log'):
     os.makedirs(f'log')
 
-# 로그 설정
 logging.basicConfig(
     filename=f'보배드림_log_{today}.txt',
     level=logging.INFO,  # 로그 레벨
@@ -26,7 +25,7 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 보배드림 단일 게시물 페이지에서 제목/내용/작성자/날짜 수집 및 CSV 저장
 def bobaedream_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -58,7 +57,6 @@ def bobaedream_crw(wd, url, search):
         content_tag = soup.find('div', class_='bodyCont')
         content_text = content_tag.get_text(separator=' ', strip=True)
 
-        # URL 제거
         content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
 
         content_list.append(content_cleaned)
@@ -93,17 +91,14 @@ def bobaedream_crw(wd, url, search):
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
@@ -124,7 +119,6 @@ def bobaedream_crw(wd, url, search):
             "계정명": writer_list
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/8.보배드림/{today}/보배드림_{search}.csv')
         logging.info(f'csv/보배드림/{today}/보배드림_{search}.csv')
 
@@ -141,6 +135,7 @@ def bobaedream_crw(wd, url, search):
         return None
 
 
+# 보배드림 검색어 목록 기반 전체 크롤링: 검색어 입력 → 게시글 URL 수집 → 상세 수집 및 저장
 def bobaedream_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/8.보배드림/{today}'):
         os.makedirs(f'csv/8.보배드림/{today}')
@@ -171,14 +166,11 @@ def bobaedream_main_crw(searchs, start_date, end_date, stop_event):
                 # soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
                 try:
-                    # 검색클릭
                     search_button = wd_dp1.find_element(By.CSS_SELECTOR, "button.square-util.btn-search.js-btn-srch")
                     search_button.click()
-                    # 검색어 입력
                     keyword_input = wd_dp1.find_element(By.ID, "keyword")
                     keyword_input.send_keys(search)
                     logging.info(f"검색어 {search} 입력")
-                    # 검색
                     submit_button = wd_dp1.find_element(By.CSS_SELECTOR, "button.btn-submit")
                     submit_button.click()
                     logging.info(f"검색 엔터")
@@ -196,7 +188,6 @@ def bobaedream_main_crw(searchs, start_date, end_date, stop_event):
                 WebDriverWait(wd_dp1, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'search_Community')))
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 li_tags = soup_dp1.find('div', class_='search_Community').find_all('li')
                 logging.info(f"검색목록 찾음.")
                 while True:
@@ -232,14 +223,12 @@ def bobaedream_main_crw(searchs, start_date, end_date, stop_event):
                     if after_start_date:
                         break
                     else:
-                        # 페이지 수 증가
                         try:
                             wd_dp1.find_element(By.CSS_SELECTOR, "a.next").click()
                             time.sleep(1)  # 페이지 로딩 시간 대기
                             WebDriverWait(wd_dp1, 10).until(
                                 EC.presence_of_element_located((By.CLASS_NAME, 'search_Community')))
 
-                            # **새로 페이지 로딩 후 다시 파싱**
                             soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
                             li_tags = soup_dp1.find('div', class_='search_Community').find_all('li')  # 새로운 페이지의 목록 불러오기
                             logging.info("다음 페이지로 이동 및 파싱 완료")

@@ -26,19 +26,19 @@ logging.basicConfig(
 
 
 # 게시글 제목 정리
+# 게시물 제목에서 불필요한 번호/확장자/따옴표/초성 등을 제거하는 전처리 함수
 def clean_title(title):
     # 제목 뒤 넘버링 제거
     title = re.sub(r'\d+$', '', title).strip()
     # 파일 확장자 제거 (.jpg, .mp4 등)
     title = re.sub(r'\.(jpg|png|gif|mp4|avi|mkv|webm|jpeg)$', '', title, flags=re.IGNORECASE).strip()
-    # 초성 제거 (자음만 있는 경우)
     title = re.sub(r'^[ㄱ-ㅎㅏ-ㅣ]+$', '', title).strip()
     # 따옴표 제거
     title = title.replace('"', '').strip()
     return title
 
 
-# 한페이지 크롤링
+# 루리웹 게시물 상세 페이지에서 제목, 본문, 작성자, 날짜 등을 수집하고 CSV 저장
 def rw_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -49,7 +49,6 @@ def rw_crw(wd, url, search):
         WebDriverWait(wd, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'view_content.autolink')))
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
-        # 리스트 초기화
         writer_list = []
         title_list = []
         content_list = []
@@ -71,10 +70,8 @@ def rw_crw(wd, url, search):
         content_tag = soup.find('div', class_='view_content autolink')
         content_text = content_tag.get_text(separator=' ', strip=True)
 
-        # URL 제거
         content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
 
-        # 추가 정보 영역도 URL 제거 + 띄어쓰기 유지
         link_box_tag = soup.find('div', class_='source_url box_line_with_shadow')
         extra = ""
         if link_box_tag:
@@ -104,15 +101,12 @@ def rw_crw(wd, url, search):
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 4. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [a['href'] for a in article_links if 'http' in a['href']]
         #
-        #     # 5. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #         logging.info(f"이미지 있음: {url}")
@@ -124,7 +118,6 @@ def rw_crw(wd, url, search):
         #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
-        # 날짜 출력
         rw_date_str = soup.find('span', class_='regdate').text.strip().split(' ')[0]
         date_list.append(rw_date_str)
 
@@ -153,6 +146,7 @@ def rw_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 검색어와 기간 조건에 따라 루리웹 게시물 목록 순회하며 전체 크롤링 수행
 def rw_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'csv/4.루리웹/{today}'):
         os.makedirs(f'csv/4.루리웹/{today}')
@@ -183,7 +177,6 @@ def rw_main_crw(searchs, start_date, end_date,stop_event):
 
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 li_tags = soup_dp1.find('div', id='board_search').find_all('li', class_="search_result_item")
 
                 for li in li_tags:

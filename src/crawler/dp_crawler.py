@@ -24,7 +24,7 @@ logging.basicConfig(
     encoding='utf-8'  # 인코딩 설정
 )
 
-# 한페이지 크롤링
+# DVD프라임 게시물 상세 페이지에서 제목, 본문, 작성자, 날짜를 추출해 CSV로 저장
 def dp_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -63,14 +63,12 @@ def dp_crw(wd, url, search):
         # content_strip = ' '.join(content.split())
         # content_list.append(content_strip)
 
-        # logging.info("내용 추출 성공")
 
         # 2. 기사제거
         # 모든 <a> 태그 제거 (기사, 유튜브 등 링크 제거)
         for a_tag in content_div.find_all('a'):
             a_tag.decompose()
 
-        # URL 형태의 텍스트 제거 (http:// 또는 https://로 시작하는 모든 링크)
         post_content = content_div.get_text(separator='\n', strip=True)
         post_content = re.sub(r'http[s]?://\S+', '', post_content)
 
@@ -78,7 +76,6 @@ def dp_crw(wd, url, search):
         post_content = content_div.get_text(separator=' ', strip=True)
         post_content = re.sub(r'https?://[^\s]+', '', post_content)
 
-        # 게시글 내용 추가
         content_list.append(post_content)
         logging.info(f"내용 추출 성공: {post_content}")
 
@@ -96,39 +93,30 @@ def dp_crw(wd, url, search):
         writer_list.append(soup.find('span', class_='member').get_text(strip=True))
 
 
-        # # 이미지/비디오/유튜브 유무 확인
         # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
         #     bg_images = content_div.find_all('span', class_='scrap_img')
         #
-        #     # 2. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 3. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
@@ -160,6 +148,7 @@ def dp_crw(wd, url, search):
 
 
 
+# DVD프라임 전체 크롤링 루프: 검색어/기간/카테고리 기반으로 페이지 순회하며 게시글 수집
 def dp_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/15.DVD프라임/{today}'):
         os.makedirs(f'csv/15.DVD프라임/{today}')
@@ -195,7 +184,6 @@ def dp_main_crw(searchs, start_date, end_date, stop_event):
 
                     soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                    # 검색결과 리스트
                     div_tags = soup_dp1.find('div', id='list_table').find_all('div', attrs={
                         'class': ['relative', 'list_table_row']})
                     logging.info(f"검색목록 찾음.")

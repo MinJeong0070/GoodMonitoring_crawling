@@ -26,6 +26,7 @@ logging.basicConfig(
 
 
 # 한페이지 크롤링
+# 네이트판 단일 게시글 URL에서 제목, 내용, 작성자, 날짜를 수집하고 CSV 저장
 def pann_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -36,7 +37,6 @@ def pann_crw(wd, url, search):
         WebDriverWait(wd, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'posting')))
         soup = BeautifulSoup(wd.page_source, 'html.parser')
 
-        # 리스트 초기화 (매번 새로 초기화)
         search_word_list = []
         search_plt_list = []
         writer_list = []
@@ -59,13 +59,11 @@ def pann_crw(wd, url, search):
             title_list.append('')  # 제목 없으면 빈 값으로 처리
             logging.error(f"제목 추출 실패: {e}")
 
-        # 게시물 내용
         content_tag = soup.find('div', class_='posting')
         if content_tag:
             # 띄어쓰기 유지하며 본문 추출
             content_text = content_tag.get_text(separator=' ', strip=True)
 
-            # URL 제거
             content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
 
             content_list.append(content_cleaned)
@@ -74,7 +72,6 @@ def pann_crw(wd, url, search):
             content_list.append('')
             logging.warning("본문 태그 없음")
 
-        # 게시물 URL
         url_list.append(url)
         search_word_list.append(search)
         search_plt_list.append('웹페이지(네이트 판)')
@@ -98,7 +95,6 @@ def pann_crw(wd, url, search):
             writer_list.append('')
             logging.error(f"작성자 추출 실패: {e}")
 
-        # 수집 시간
         current_date_list.append(datetime.now().strftime('%Y-%m-%d '))
 
         # # 이미지 유무 체크
@@ -113,7 +109,6 @@ def pann_crw(wd, url, search):
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
@@ -121,7 +116,6 @@ def pann_crw(wd, url, search):
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
         #     image_check_list.append(' ')
-        #     logging.error(f"이미지 확인 오류: {e}")
 
         # 데이터프레임 생성
         main_temp = pd.DataFrame({
@@ -153,6 +147,7 @@ def pann_crw(wd, url, search):
         return None
 
 
+# 검색어 리스트와 기간에 따라 네이트판 게시물 다건 크롤링 실행
 def paan_main_crw(searchs, start_date, end_date,stop_event):
     if not os.path.exists(f'csv/6.네이트판/{today}'):
         os.makedirs(f'csv/6.네이트판/{today}')
@@ -179,7 +174,6 @@ def paan_main_crw(searchs, start_date, end_date,stop_event):
 
                 logging.info(f"주소: {url_dp1}")
                 wd_dp1.get(url_dp1)
-                # 페이지 로딩 시간 초과 시, 넘어가고 로그남김.
                 try:
                     WebDriverWait(wd_dp1, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'srcharea')))
                 except TimeoutException:
@@ -190,7 +184,6 @@ def paan_main_crw(searchs, start_date, end_date,stop_event):
 
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 tr_tags = soup_dp1.find('ul', class_='s_list').find_all('li')
                 logging.info(f"검색목록 찾음.")
                 for tr in tr_tags:
@@ -216,7 +209,6 @@ def paan_main_crw(searchs, start_date, end_date,stop_event):
                     logging.info(f"url 찾음.")
                     pann_crw(wd, url, search)
 
-                # 시작 날짜 이후의 게시글이 없고 기간 내 게시글도 없으면 종료
                 if after_start_date:
                     break
                 else:

@@ -23,12 +23,12 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 단일 뽐뿌 게시물에서 제목, 본문, 작성자, 날짜를 추출하고 개별 CSV로 저장하는 함수
 def pp_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
 
-        # ✅ 안정화된 요청
+        # 안정화된 요청
         ok = safe_get(wd, url, retries=3, base_sleep=2)
         if not ok:
             logging.warning(f"safe_get 실패: {url}")
@@ -62,9 +62,7 @@ def pp_crw(wd, url, search):
         search_plt_list.append('웹페이지(뽐뿌)')
         url_list.append(url)
 
-        # # 1. 기사 포함 내용
         # content_list.append(soup.find('td', class_='board-contents').get_text(strip=True))
-        # logging.info("내용 추출 성공")
 
         try:
             content_div = soup.find('td', class_='board-contents')
@@ -76,7 +74,6 @@ def pp_crw(wd, url, search):
             # 본문 텍스트 추출 (띄어쓰기 유지)
             post_content = content_div.get_text(separator=' ', strip=True)
 
-            # URL 제거
             post_content_cleaned = re.sub(r'https?://[^\s]+', '', post_content).strip()
 
             content_list.append(post_content_cleaned)
@@ -88,7 +85,6 @@ def pp_crw(wd, url, search):
 
         search_word_list.append(search)
 
-        # 날짜 출력
         pp_date_str = soup.find('ul', class_='topTitle-mainbox').find_all('li')[1].get_text()
         date_match = re.search(r'(\d{4}-\d{2}-\d{2})', pp_date_str)
         date_list = date_match.group(1)
@@ -102,7 +98,6 @@ def pp_crw(wd, url, search):
 
         writer_list.append(name)
 
-        # 추출시간
         now_date.append(datetime.now().strftime('%Y-%m-%d'))
 
         # # 이미지/비디오/유튜브 유무 확인
@@ -120,24 +115,20 @@ def pp_crw(wd, url, search):
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         # 임시 데이터프레임 생성
@@ -154,7 +145,6 @@ def pp_crw(wd, url, search):
             # "이미지 유무": image_check_list,
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/1.뽐뿌/{today}/뽐뿌_{search}.csv')
         logging.info(f"저장완료: csv/뽐뿌/{today}/뽐뿌_{search}.csv")
 
@@ -164,6 +154,7 @@ def pp_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 검색어 및 기간 조건에 따라 뽐뿌 게시물 전체를 반복 탐색하며 크롤링하는 메인 함수
 def pp_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/1.뽐뿌/{today}'):
         os.makedirs(f'csv/1.뽐뿌/{today}')

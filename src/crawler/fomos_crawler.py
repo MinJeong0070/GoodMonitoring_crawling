@@ -27,6 +27,7 @@ logging.basicConfig(
 )
 
 
+# 새로 열린 탭이 있을 경우 모두 닫고 메인 탭으로 복귀
 def _close_extra_tabs(wd):
     """메인 탭(첫 번째)을 제외한 모든 탭을 닫습니다."""
     try:
@@ -41,7 +42,7 @@ def _close_extra_tabs(wd):
         pass
 
 
-# ===== 상세 페이지 크롤링 =====
+# 페이지 내 alert 창이 뜨면 자동으로 닫고 실패로 처리
 def _close_alert_if_any(wd, url: str) -> bool:
     """경고(alert)창이 있으면 닫고 True 반환"""
     try:
@@ -53,6 +54,7 @@ def _close_alert_if_any(wd, url: str) -> bool:
         return False
 
 
+# 포모스 상세 페이지에서 게시글 정보 추출 및 개별 CSV 저장
 def fomos_crw(wd, url, search) -> str:
     """
     반환값: "ok" (성공), "fail" (실패), "fatal" (브라우저 먹통/재시작 필요)
@@ -135,6 +137,7 @@ def fomos_crw(wd, url, search) -> str:
 
 
 # ===== 드라이버 재시작 함수 =====
+# 브라우저 재시작 로직 (에러 발생 시 메모리 누수 방지)
 def _restart_driver(wd):
     logging.warning("⚠️ [시스템] 드라이버 재시작 시도...")
     try:
@@ -147,6 +150,7 @@ def _restart_driver(wd):
     return new_wd
 
 
+# 검색어 목록에 대해 포모스 게시글 크롤링 전체 수행 및 결과 병합 저장
 def fomos_main_crw(searchs, start_date, end_date, stop_event):
     os.makedirs(f"csv/18.포모스/{today}", exist_ok=True)
     logging.info("=" * 56)
@@ -172,14 +176,12 @@ def fomos_main_crw(searchs, start_date, end_date, stop_event):
                     wd.get(list_url)
                     _close_extra_tabs(wd)
 
-                    # 목록 로딩 대기
                     try:
                         WebDriverWait(wd, 5).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, "ul.webzine li"))
                         )
                         err_count = 0  # 성공하면 에러 카운트 초기화
                     except TimeoutException:
-                        # 목록이 안 뜨면 결과 없음 or 로딩 실패
                         soup_check = BeautifulSoup(wd.page_source, "html.parser")
                         if not soup_check.select("ul.webzine li"):
                             logging.info(f"[목록] 결과 없음 → '{search}' 완료")
@@ -205,13 +207,10 @@ def fomos_main_crw(searchs, start_date, end_date, stop_event):
 
                         post_url = "https://www.fomos.kr" + href
 
-                        # === 상세 페이지 크롤링 ===
                         status = fomos_crw(wd, post_url, search)
 
-                        # [핵심] 브라우저 맛이 갔으면(fatal) 재시작
                         if status == "fatal":
                             wd = _restart_driver(wd)
-                            # 현재 페이지 다시 시도하거나, 다음 글로 넘어감 (여기선 다음 글로)
                             continue
 
                 except (WebDriverException, Exception) as e:
@@ -225,7 +224,6 @@ def fomos_main_crw(searchs, start_date, end_date, stop_event):
 
                 page_num += 1
 
-                # 10페이지마다 주기적 재시작 (메모리 관리)
                 if page_num % 10 == 0:
                     wd = _restart_driver(wd)
 
@@ -238,7 +236,6 @@ def fomos_main_crw(searchs, start_date, end_date, stop_event):
         except:
             pass
 
-    # ===== 결과 병합 =====
     if not stop_event.is_set():
         result_dir = "결과/포모스"
         os.makedirs(result_dir, exist_ok=True)

@@ -24,6 +24,7 @@ logging.basicConfig(
     encoding='utf-8'  # 인코딩 설정
 )
 
+# 블라인드에서 사용하는 다양한 날짜 형식을 datetime.date로 변환
 def parse_blind_date(date_str, current_year=2025):
     from datetime import datetime, timedelta
 
@@ -64,6 +65,7 @@ def parse_blind_date(date_str, current_year=2025):
 
     return None  # 어떤 형식에도 안 맞으면 None 반환
 
+# 단일 블라인드 게시글 상세 수집: 제목, 내용, 작성자, 날짜를 추출하고 저장
 def blind_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -95,7 +97,6 @@ def blind_crw(wd, url, search):
         # content = soup.find('p', id = 'contentArea').get_text()
         # content_strip = ' '.join(content.split())
         # content_list.append(content_strip)
-        # logging.info("내용 추출 성공")
 
         # 2. 기사제거
         for a_tag in content_div.find_all('a'):
@@ -130,39 +131,30 @@ def blind_crw(wd, url, search):
         writer_list.append(writert_strip)
 
         # current_date_list.append(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        # # 이미지/비디오/유튜브 유무 확인
         # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
         #     bg_images = content_div.find_all('span', class_='scrap_img')
         #
-        #     # 2. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 3. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 5. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [
         #         a['href'] for a in article_links if 'http' in a['href']
         #     ]
         #
-        #     # 6. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
@@ -175,10 +167,8 @@ def blind_crw(wd, url, search):
             "게시물 등록일자": date_list,
             "계정명": writer_list,
             # "이미지 유무": image_check_list
-            # "수집시간" : current_date_list
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/20.블라인드/{today}/블라인드_{search}.csv')
         logging.info(f"저장완료: csv/20.블라인드/{today}/블라인드_{search}.csv")
 
@@ -187,6 +177,7 @@ def blind_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 검색어 기반 전체 블라인드 크롤링 수행: 목록 순회 + 상세 수집 + 저장
 def blind_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/20.블라인드/{today}'):
         os.makedirs(f'csv/20.블라인드/{today}')

@@ -44,9 +44,11 @@ logging.basicConfig(
     encoding='utf-8'
 )
 
+# 크롤링 탐지 우회를 위한 랜덤 딜레이 삽입 함수
 def _rand_sleep(a=0.6, b=1.6):
     time.sleep(random.uniform(a, b))
 
+# Selenium 드라이버에 페이지 타임아웃 및 광고 차단 설정 적용
 def _prepare_driver(wd):
     """공통 드라이버 세팅: 페이지 타임아웃 + 광고 차단(CDP)"""
     try:
@@ -60,12 +62,15 @@ def _prepare_driver(wd):
         # 일부 환경에선 CDP가 막혀 있을 수 있음 -> 무시
         pass
 
+# BeautifulSoup 요소에서 안전하게 텍스트만 추출
 def _safe_text(el) -> str:
     return el.get_text(strip=True) if el else ""
 
+# 날짜 객체를 문자열 YYYY-MM-DD 포맷으로 변환
 def _format_date(d: date_cls | None) -> str:
     return d.strftime("%Y-%m-%d") if d else ""
 
+# 목록 테이블의 날짜 텍스트를 datetime.date 객체로 파싱
 def _parse_list_date(raw_text: str) -> date_cls | None:
     """목록 날짜 표기를 안전하게 일자(date)로 환원"""
     if not raw_text:
@@ -83,6 +88,7 @@ def _parse_list_date(raw_text: str) -> date_cls | None:
         logging.error(f"목록 날짜 파싱 실패: raw='{raw}', err={e}", exc_info=True)
     return None
 
+# 페이지 로딩 타임아웃 처리 포함한 안전한 wd.get() 함수 (필요시 window.stop 포함)
 def _safe_get(wd, url: str, wait_css: str | None = None, retries: int = 1) -> bool:
     """
     크롬이 로딩을 끝내지 못하고 멈출 때를 대비해:
@@ -117,7 +123,7 @@ def _safe_get(wd, url: str, wait_css: str | None = None, retries: int = 1) -> bo
         _rand_sleep(0.8, 1.6)
     return False
 
-# ===== 상세 페이지 크롤링 =====
+# 단일 MLBPARK 게시글의 상세 정보를 수집하여 개별 CSV로 저장
 def mlb_crw(wd, url: str, search: str, list_date_hint: date_cls | None = None) -> bool:
     """
     단일 게시물 상세 페이지 크롤링.
@@ -195,7 +201,6 @@ def mlb_crw(wd, url: str, search: str, list_date_hint: date_cls | None = None) -
                 if m:
                     post_date = m.group(1)
 
-            # 여전히 비어 있으면 페이지 전체 텍스트에서 폴백 검색
             if not post_date:
                 m2 = re.search(r"(\d{4}-\d{2}-\d{2})", soup.get_text(" ", strip=True))
                 if m2:
@@ -219,7 +224,6 @@ def mlb_crw(wd, url: str, search: str, list_date_hint: date_cls | None = None) -
         save_to_csv(df, f'csv/21.엠엘비파크/{today_str_yymmdd}/엠엘비파크_{search}.csv')
         logging.info(f"[상세] 저장 완료: {url}")
 
-        # 무거운 페이지 잔상 제거
         try:
             wd.get("about:blank")
         except Exception:
@@ -230,7 +234,7 @@ def mlb_crw(wd, url: str, search: str, list_date_hint: date_cls | None = None) -
         logging.error(f"[상세] 크롤링 실패: url={url}, err={e}", exc_info=True)
         return False
 
-# ===== 메인(리스트 페이지 순회) =====
+# 검색어 리스트 순회하며 MLBPARK 전체 게시글 목록 및 상세 수집 후 병합 저장
 def mlb_main_crw(searchs, start_date, end_date, stop_event):
     """
     searchs: 검색어 리스트
@@ -270,7 +274,6 @@ def mlb_main_crw(searchs, start_date, end_date, stop_event):
                 )
                 logging.info(f"[목록] 이동: {list_url}")
 
-                # 목록 페이지 진입(재시도 포함)
                 ok = _safe_get(wd_list, list_url, wait_css="table.tbl_type01", retries=LIST_RETRY_MAX)
                 if not ok:
                     logging.error(f"[목록] 페이지 진입 실패: {list_url}")
@@ -281,7 +284,6 @@ def mlb_main_crw(searchs, start_date, end_date, stop_event):
                         pass
                     wd_list = setup_driver()
                     _prepare_driver(wd_list)
-                    # 다음 페이지로 넘어가며 계속
                     page_num += 30
                     continue
 
@@ -332,7 +334,6 @@ def mlb_main_crw(searchs, start_date, end_date, stop_event):
                     if not ok:
                         consecutive_detail_fail += 1
                         if consecutive_detail_fail >= 2:
-                            # 연속 실패 시 상세 드라이버 재기동 후 계속
                             logging.warning("[상세] 연속 실패 → 드라이버 재기동 시도")
                             try:
                                 wd.quit()

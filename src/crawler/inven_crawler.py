@@ -29,6 +29,7 @@ logging.basicConfig(
 )
 
 
+# 단일 인벤 게시물 URL에서 게시글 제목, 본문, 작성자, 날짜를 추출하고 CSV로 저장
 def inven_crw(wd, url, search):
    try:
        logging.info(f"크롤링 시작:{search}: {url}")
@@ -51,7 +52,6 @@ def inven_crw(wd, url, search):
        image_check_list = []
 
 
-       # 확인용
        now_date = []
        # 이미지 유무 추출
        # content_div = soup.find('div', class_='articleContent')
@@ -65,7 +65,6 @@ def inven_crw(wd, url, search):
        content_tag = soup.find('div', id='powerbbsContent')
        # 본문 추출 (띄어쓰기 유지)
        content_text = content_tag.get_text(separator=' ', strip=True)
-       # URL 제거
        content_cleaned = re.sub(r'https?://[^\s]+', '', content_text).strip()
        content_list.append(content_cleaned)
        logging.info("내용 추출 성공 ")
@@ -78,16 +77,13 @@ def inven_crw(wd, url, search):
        search_word_list.append(search)
 
 
-       # 날짜 출력
        date_str = soup.find('div', class_='articleDate').get_text().strip()
-       # 문자열 슬라이싱 [:10]을 사용하여 뒤에 붙은 시간 정보나 공백을 제거하고 날짜만 추출
        date = datetime.strptime(date_str[:10], '%Y-%m-%d')
        date_list.append(date)
        # 채널명
        writer_list.append(soup.find('div', class_="articleWriter").get_text().strip())
 
 
-       # 추출시간
        now_date.append(datetime.now().strftime('%Y-%m-%d'))
 
 
@@ -118,6 +114,7 @@ def inven_crw(wd, url, search):
 
 
 
+# 검색어 리스트와 기간을 기반으로 인벤 게시물 목록 및 상세 페이지 크롤링 전체 수행
 def inven_main_crw(searchs, start_date, end_date,stop_event):
    if not os.path.exists(f'csv/3.인벤/{today}'):
        os.makedirs(f'csv/3.인벤/{today}')
@@ -149,7 +146,6 @@ def inven_main_crw(searchs, start_date, end_date,stop_event):
                soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
 
-               # 검색결과 없음
                noresult = soup_dp1.find('ul', class_='noresult')
 
 
@@ -157,13 +153,11 @@ def inven_main_crw(searchs, start_date, end_date,stop_event):
                    break  # 결과가 없으면 함수 종료
 
 
-               # 페이지 수 가져오기
                page_tag = soup_dp1.find_all('a', class_="pg")
                page_numbers = [int(tag.text) for tag in page_tag if tag.text.isdigit()]
                max_page_num = max(page_numbers) if page_numbers else 1  # 최대 페이지 번호
 
 
-               # 검색결과 리스트
                li_tags = soup_dp1.find('ul', class_='news_list').find_all('li')
                logging.info(f"검색결과 찾음")
                for li in li_tags:

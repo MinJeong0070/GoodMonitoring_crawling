@@ -23,6 +23,7 @@ logging.basicConfig(
 
 
 # 한페이지 크롤링
+# 주어진 게시물 URL에서 에펨코리아 게시글 제목/내용/작성자/날짜 등 추출 후 CSV 저장
 def fm_crw(wd, url, search):
     try:
         wd.get(f'{url}')
@@ -74,18 +75,13 @@ def fm_crw(wd, url, search):
 
         writer_list.append(soup.find('a', class_=re.compile(r'^member_\d+')).get_text())
 
-        # # 이미지/비디오/유튜브 유무 확인(현재는 사용하지않는 기능)
         # try:
-        #     # 1. scrap_img로 표시된 background-image 확인
         #     bg_images = content_div.find_all('span', class_='scrap_img')
         #
-        #     # 2. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 3. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 4. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
@@ -99,14 +95,12 @@ def fm_crw(wd, url, search):
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?:\/\/[^\s]+|https?:)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if bg_images or images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
 
         main_temp = pd.DataFrame({
@@ -121,7 +115,6 @@ def fm_crw(wd, url, search):
             # "이미지 유무": image_check_list
         })
 
-        # 데이터 저장
         save_to_csv(main_temp, f'csv/23.에펨코리아/{today}/에펨코리아_{search}.csv')
         logging.info(f'저장완료 : csv/23.에펨코리아/{today}/에펨코리아_{search}.csv')
 
@@ -130,6 +123,7 @@ def fm_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 검색어 목록과 기간 조건에 따라 다수 게시물 목록 탐색 후, 개별 상세 페이지 수집
 def fm_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/23.에펨코리아/{today}'):
         os.makedirs(f'csv/23.에펨코리아/{today}')
@@ -158,7 +152,6 @@ def fm_main_crw(searchs, start_date, end_date, stop_event):
                 time.sleep(sleep_random_time)
                 soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                # 검색결과 리스트
                 li_tags = soup_dp1.find('ul', class_='searchResult').find_all('li')
 
                 for li in li_tags:

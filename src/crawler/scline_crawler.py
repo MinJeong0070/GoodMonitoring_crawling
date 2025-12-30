@@ -25,6 +25,7 @@ logging.basicConfig(
 )
 
 
+# 단일 사커라인 게시물에서 제목, 본문, 작성자, 날짜 등 상세 정보 추출 및 저장
 def scline_crw(wd, url, search):
     """
     사커라인 상세 페이지 크롤러
@@ -34,13 +35,11 @@ def scline_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
 
-        # 페이지 로드 타임아웃 살짝 여유 있게
         wd.set_page_load_timeout(20)
 
         try:
             wd.get(url)
         except TimeoutException as e:
-            # 페이지 로드 타임아웃일 경우 현재까지 로드된 내용으로만 시도
             logging.warning(f"[상세] 페이지 로딩 시간 초과(TimeoutException) → 현재까지 로드된 소스로 진행: {url} / {e}")
         except WebDriverException as e:
             # renderer timeout 등 WebDriverException 처리
@@ -148,6 +147,7 @@ def scline_crw(wd, url, search):
         return None
 
 
+# 검색어/기간 기반으로 목록 페이지 반복 탐색 후 상세 게시글 수집 및 병합 저장
 def scline_main_crw(searchs, start_date, end_date, stop_event):
     """
     사커라인 목록 페이지 순회 크롤러
@@ -187,7 +187,6 @@ def scline_main_crw(searchs, start_date, end_date, stop_event):
                         f'&categoryDepth01=0&searchWindow=&searchType=0&searchText={search}'
                     )
 
-                    # 목록 페이지에도 타임아웃 설정
                     wd_dp1.set_page_load_timeout(20)
                     try:
                         wd_dp1.get(url)
@@ -200,7 +199,6 @@ def scline_main_crw(searchs, start_date, end_date, stop_event):
                             logging.warning(
                                 f"[목록] renderer 타임아웃 발생, 해당 페이지 스킵: {url} / {e}"
                             )
-                            # 이 페이지는 건너뛰고 다음 페이지로
                             page_num += 1
                             continue
                         logging.error(f"[목록] 웹드라이버 에러: {url} / {e}")
@@ -213,7 +211,6 @@ def scline_main_crw(searchs, start_date, end_date, stop_event):
 
                     soup_dp1 = BeautifulSoup(wd_dp1.page_source, 'html.parser')
 
-                    # 검색결과 리스트
                     board_container = soup_dp1.find('div', id='boardListContainer')
                     if not board_container:
                         logging.info(f"[목록] 검색 결과 컨테이너 없음, 종료: {url}")
@@ -244,7 +241,6 @@ def scline_main_crw(searchs, start_date, end_date, stop_event):
                             continue
 
                         if date < start_date:
-                            # 시작일보다 이전 글 → 이후 페이지는 더 과거이므로 중단
                             after_start_date = True
                             break
 
@@ -291,7 +287,6 @@ def scline_main_crw(searchs, start_date, end_date, stop_event):
         except Exception:
             pass
 
-    # 중단 없이 끝까지 돌았을 때만 결과 병합
     if not stop_event.is_set():
         result_dir = '결과/사커라인'
         if not os.path.exists(result_dir):

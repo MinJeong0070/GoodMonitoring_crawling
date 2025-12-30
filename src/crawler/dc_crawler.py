@@ -11,12 +11,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from datetime import datetime
-
-# 🔹 추가: 시작 시 진행상황 리셋 유틸
 from pathlib import Path
 import json
 PROGRESS_PATH = Path("progress.json")
 
+# 진행상황 JSON(progress.json)을 비우는 초기화 함수
 def reset_progress():
     """크롤링 시작 시 진행상황 파일을 빈 JSON으로 초기화"""
     try:
@@ -55,7 +54,7 @@ UA = (
 )
 
 # -------------------------------
-# 1) 목록(검색 결과) 수집: requests + BS
+# DCInside 검색 결과 페이지에서 게시물 목록 URL과 날짜 추출
 # -------------------------------
 def fetch_list_urls(search: str, page: int):
     """
@@ -97,7 +96,7 @@ def fetch_list_urls(search: str, page: int):
 
 
 # -------------------------------
-# 2) 상세 게시물 수집: requests (브라우저 미사용)
+# 단일 게시물 상세 정보를 requests로 수집하여 DataFrame으로 반환
 # -------------------------------
 def dc_crw_detail(wd, url: str, search: str):
     """
@@ -146,7 +145,6 @@ def dc_crw_detail(wd, url: str, search: str):
     # 날짜
     try:
         date_str = soup.find('span', class_='gall_date').get_text(strip=True)
-        # 예: 2025.11.26 12:34:56
         post_date = datetime.strptime(date_str, '%Y.%m.%d %H:%M:%S').date()
     except Exception:
         post_date = None
@@ -173,7 +171,7 @@ def dc_crw_detail(wd, url: str, search: str):
 
 
 # -------------------------------
-# 3) 메인: 검색어 다건 크롤링 (안정화판)
+# 검색어 리스트에 대해 디시인사이드 크롤링 전체 실행 (목록+상세+저장+병합)
 # -------------------------------
 def dc_main_crw(searchs, start_date, end_date, stop_event):
     """
@@ -201,7 +199,6 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                 print("🛑 크롤링 중단됨")
                 break
 
-            # 주기적 드라이버 재생성 (예: 15개마다)
             if processed_keywords > 0 and (processed_keywords % 15) == 0:
                 try:
                     wd_detail.quit()
@@ -251,7 +248,6 @@ def dc_main_crw(searchs, start_date, end_date, stop_event):
                         logging.error(f"[{search}] 상세 실패: {e}")
                         fail_streak += 1
 
-                    # 연속 실패 3회 시 드라이버 재기동 (현재는 거의 의미 없음, 호환성용)
                     if fail_streak >= 3:
                         logging.info("[driver] 실패 누적 → 드라이버 재기동")
                         try:

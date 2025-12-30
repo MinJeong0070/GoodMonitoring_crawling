@@ -32,6 +32,7 @@ logging.basicConfig(
 )
 
 
+# Selenium 탐지 우회용 undetected_chromedriver 설정 및 생성
 def get_undetected_driver():
     """
     일반 Selenium 대신 undetected-chromedriver를 사용하여
@@ -48,6 +49,7 @@ def get_undetected_driver():
     return driver
 
 
+# 알림창(Unexpected Alert) 발생 시 자동 처리 및 로그 기록
 def handle_unexpected_alert(driver, context: str = "") -> str | None:
     try:
         alert = driver.switch_to.alert
@@ -60,6 +62,7 @@ def handle_unexpected_alert(driver, context: str = "") -> str | None:
         return None
 
 
+# 키보드 입력 대신 클립보드 복사/붙여넣기를 활용한 검색어 입력
 def clipboard_input(driver, element, user_input):
     """클립보드 복사 -> 붙여넣기 (봇 탐지 최소화)"""
     try:
@@ -79,6 +82,7 @@ def clipboard_input(driver, element, user_input):
         element.send_keys(user_input)
 
 
+# 웃긴대학 단일 게시글 상세 크롤링 및 CSV 저장
 def humoruniv_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -120,7 +124,6 @@ def humoruniv_crw(wd, url, search):
             cleaned_title = clean_title(raw_title)
             title_list.append(cleaned_title)
 
-            # 내용 추출
             for a_tag in content_div.find_all("a"):
                 a_tag.decompose()
             post_content = content_div.get_text(separator=" ", strip=True)
@@ -159,6 +162,7 @@ def humoruniv_crw(wd, url, search):
         return pd.DataFrame()
 
 
+# 웃긴대학 전체 게시글 반복 수집 (검색어별, 날짜 필터 포함)
 def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f"csv/11.웃긴대학/{today}"):
         os.makedirs(f"csv/11.웃긴대학/{today}")
@@ -207,7 +211,6 @@ def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
                     WebDriverWait(wd_dp1, 15).until(EC.presence_of_element_located((By.ID, "wrap_sch")))
                 except:
                     handle_unexpected_alert(wd_dp1, "메인 로딩")
-                    # 로딩 실패해도 일단 진행 시도
 
                 time.sleep(random.uniform(1.0, 2.0))
 
@@ -234,7 +237,6 @@ def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
 
                 time.sleep(random.uniform(3.0, 5.0))  # 검색 결과 대기
 
-                # 결과 파싱
                 try:
                     soup_dp1 = BeautifulSoup(wd_dp1.page_source, "html.parser")
                 except UnexpectedAlertPresentException:
@@ -260,7 +262,6 @@ def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
                         if start_date <= date <= end_date:
                             date_flag = True
 
-                            # [수정된 URL 생성 로직]
                             raw_href = tb.find("a").get("href").strip()
 
                             if raw_href.startswith("http"):
@@ -289,7 +290,6 @@ def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
                     logging.info("기간 내 게시글 없음 -> 다음 검색어")
                     break
 
-                # 페이지 이동
                 try:
                     # '다음' 버튼 찾기 (CSS 선택자 수정 가능성 있음)
                     # 웃긴대학의 다음 버튼은 보통 javascript:paging(...) 형태이거나 이미지 버튼임
@@ -311,15 +311,11 @@ def humoruniv_main_crw(searchs, start_date, end_date, stop_event):
                 logging.error(f"메인 루프 에러: {e}")
                 break
 
-            # while 문 안전장치 (한 페이지 돌고 break가 안 걸리면 무한루프 방지용)
-            # 여기서는 페이징이 성공하면 계속 돌고 아니면 break 하는 구조가 필요함
-            # 현재 구조상 while True 안에서 페이징 실패시 break 하므로 유지.
 
     wd.quit()
     wd_dp1.quit()
 
     if not site_blocked and not stop_event.is_set():
-        # 결과 파일 병합 로직 (기존과 동일)
         result_dir = "결과/웃긴대학"
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)

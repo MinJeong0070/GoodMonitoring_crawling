@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 
-# 한페이지 크롤링
+# 클리앙 게시물 상세 페이지에서 제목, 본문, 작성자, 날짜 등을 추출하고 CSV 저장
 def clien_crw(wd, url, search):
     try:
         logging.info(f"크롤링 시작: {url}")
@@ -58,7 +58,6 @@ def clien_crw(wd, url, search):
             content_div = soup.find('div', class_='post_content')
             content = content_div.get_text(separator=' ', strip=True)  # 띄어쓰기 유지
 
-            # 본문에서 URL 제거
             content_cleaned = re.sub(r'https?://[^\s]+', '', content).strip()
 
             content_list.append(content_cleaned)
@@ -72,42 +71,33 @@ def clien_crw(wd, url, search):
         url_list.append(url)
 
         search_word_list.append(search)
-        # 이미지/비디오/유튜브 유무 확인
 
         # image_check_list = []
 
         # try:
         #     content_div = soup.find('div', class_='post_content')
         #
-        #     # 1. 일반 이미지 (img 태그) 확인
         #     images = content_div.find_all('img')
         #
-        #     # 2. 비디오 확인 (video 태그)
         #     videos = content_div.find_all('video')
         #
-        #     # 3. 유튜브 영상 확인 (iframe 태그의 youtube.com 포함 여부)
         #     iframes = content_div.find_all('iframe')
         #     youtube_videos = [iframe for iframe in iframes if iframe.get('src') and 'youtube.com' in iframe['src']]
         #
-        #     # 4. 하이퍼링크로 포함된 모든 URL
         #     article_links = content_div.find_all('a', href=True)
         #     link_urls = [a['href'] for a in article_links if 'http' in a['href']]
         #
-        #     # 5. 텍스트 안에 포함된 URL 찾기 (일반 텍스트 URL 감지)
         #     text_content = content_div.get_text()
         #     text_urls = re.findall(r'(https?://[^\s]+)', text_content)
         #
-        #     # 이미지, 비디오, 유튜브 영상이 하나라도 있으면 'O', 없으면 ' '
         #     if images or videos or youtube_videos or link_urls or text_urls:
         #         image_check_list.append('O')
         #     else:
         #         image_check_list.append(' ')
         #         logging.info(f'이미지 없음: {url}')
         # except Exception as e:
-        #     logging.error(f"미디어 확인 오류: {e}")
         #     image_check_list.append(' ')
         #
-        # # 날짜 출력 (수정일 제외)
         # clien_date_str = soup.find('div', class_='post_author').find('span').text.strip()
 
         # if soup.find('span', class_='lastdate'):
@@ -125,7 +115,6 @@ def clien_crw(wd, url, search):
         writer_strip = ' '.join(writer_tag.text.split())
         writer_list.append(writer_strip)
 
-        # 추출시간
         now_date.append(datetime.now().strftime('%Y-%m-%d'))
         # 임시 데이터프레임 생성
         main_temp = pd.DataFrame({
@@ -158,6 +147,7 @@ def clien_crw(wd, url, search):
         return None
 
 
+# 검색어와 기간 조건에 따라 클리앙 게시물 다건 수집 수행 (목록 + 상세 + 병합 저장)
 def clien_main_crw(searchs, start_date, end_date, stop_event):
     if not os.path.exists(f'csv/2.클리앙/{today}'):
         os.makedirs(f'csv/2.클리앙/{today}')
